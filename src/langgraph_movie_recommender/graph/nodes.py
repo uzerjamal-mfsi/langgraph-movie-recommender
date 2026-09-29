@@ -18,7 +18,7 @@ def classify_intent(state: GraphState, config):
 
         return {
             "intent": result.intent,
-            "fitlers": result.filters,
+            "filters": result.filters,
             "error": None
         }
     except Exception:
