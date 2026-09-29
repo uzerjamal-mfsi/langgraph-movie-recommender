@@ -12,6 +12,7 @@ REQUEST_TIMEOUT_SECONDS = 10.0
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 1.0
 MAX_RETRY_AFTER_SECONDS = 30.0
+TMDB_SEARCH_LIMIT = 10
 VALID_MEDIA_TYPES = {"movie", "tv"}
 GENRE_NAMES = {
     "movie": {
@@ -61,6 +62,10 @@ logger = logging.getLogger(__name__)
 
 
 class TMDBError(Exception):
+    pass
+
+
+class TitleResolutionError(Exception):
     pass
 
 
@@ -226,3 +231,30 @@ class TMDBClient:
 
         mapping = GENRE_NAMES[media_type]
         return list(dict.fromkeys(mapping[genre_id] for genre_id in genre_ids if genre_id in mapping))
+
+
+def resolve_media_item(title, media_type, year) -> MediaItem:
+    cleaned_title = title.strip()
+    if not cleaned_title:
+        raise ValueError("title must not be blank.")
+    if media_type not in VALID_MEDIA_TYPES:
+        raise ValueError("media_type must be 'movie' or 'tv'.")
+
+    with TMDBClient() as client:
+        candidates = client.search(cleaned_title, media_type, limit=TMDB_SEARCH_LIMIT)
+
+    title_key = _title_key(cleaned_title)
+    matches = [candidate for candidate in candidates if _title_key(candidate.title) == title_key]
+    if year is not None:
+        matches = [candidate for candidate in matches if candidate.year == year]
+
+    if not matches:
+        year_label = f" from {year}" if year is not None else ""
+        raise TitleResolutionError(
+            f"No TMDB {media_type} found matching '{cleaned_title}'{year_label}."
+        )
+    return matches[0]
+
+
+def _title_key(title):
+    return "".join(character for character in title.casefold() if character.isalnum())
