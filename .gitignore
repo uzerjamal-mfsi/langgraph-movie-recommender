@@ -22,6 +22,7 @@ qdrant_storage/
 
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .ruff_cache/
 .mypy_cache/

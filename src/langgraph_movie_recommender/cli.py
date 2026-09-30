@@ -23,7 +23,7 @@ def create_thread_id():
 def resolve_thread_id(thread_id):
     if thread_id is None:
         return create_thread_id()
-    
+
     cleaned = thread_id.strip()
     return cleaned
 
@@ -31,7 +31,7 @@ def resolve_thread_id(thread_id):
 def read_message():
     try:
         raw_message = input(PROMPT_LABEL)
-    except (KeyboardInterrupt):
+    except KeyboardInterrupt:
         return None
 
     message = raw_message.strip()
@@ -77,14 +77,14 @@ def run_chat(thread_id=None):
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                print(f'Assistant: ERROR: {e} \n Please try again.')
+                print(f"Assistant: ERROR: {e} \n Please try again.")
                 continue
 
             messages = result.get("messages") or []
             if messages:
-                print(f'Assistant: {messages[-1].content}')
+                print(f"Assistant: {messages[-1].content}")
             else:
-                print(f'Assistant: I did not produce a response. Please try again')
+                print("Assistant: I did not produce a response. Please try again")
 
     print(EXIT_MESSAGE)
     return 0

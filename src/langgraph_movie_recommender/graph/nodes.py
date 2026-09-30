@@ -4,7 +4,10 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 from langgraph_movie_recommender.graph.llm import get_chat_model
 from langgraph_movie_recommender.graph.prompts import CLASSIFIER_PROMPT
-from langgraph_movie_recommender.graph.recommendations import find_candidates, format_recommendations
+from langgraph_movie_recommender.graph.recommendations import (
+    find_candidates,
+    format_recommendations,
+)
 from langgraph_movie_recommender.graph.schemas import IntentClassification
 from langgraph_movie_recommender.graph.state import GraphState
 from langgraph_movie_recommender.tmdb import TMDBError
@@ -19,10 +22,12 @@ def classify_intent(state: GraphState, config):
         llm = get_chat_model()
         classifier = llm.with_structured_output(IntentClassification)
 
-        result = classifier.invoke([
-            SystemMessage(content=CLASSIFIER_PROMPT),
-            *state["messages"],
-        ])
+        result = classifier.invoke(
+            [
+                SystemMessage(content=CLASSIFIER_PROMPT),
+                *state["messages"],
+            ]
+        )
 
         logger.debug(
             "classify_intent: classified intent=%s filters=%s",
@@ -30,17 +35,16 @@ def classify_intent(state: GraphState, config):
             result.filters,
         )
 
-        return {
-            "intent": result.intent,
-            "filters": result.filters,
-            "error": None
-        }
+        return {"intent": result.intent, "filters": result.filters, "error": None}
     except Exception:
         logger.exception("classify_intent: failed to classify intent")
         return {
-            "messages": [AIMessage(content="I couldn't understand your request. Please try again later.")],
-            "error": "I couldn't understand your request. Please try again later."
+            "messages": [
+                AIMessage(content="I couldn't understand your request. Please try again later.")
+            ],
+            "error": "I couldn't understand your request. Please try again later.",
         }
+
 
 def route_intent(state: GraphState):
     if state.get("error"):
@@ -50,6 +54,7 @@ def route_intent(state: GraphState):
     route = state.get("intent", "general")
     logger.debug("route_intent: routing to %s", route)
     return route
+
 
 def answer_general(state: GraphState):
     logger.debug("answer_general: start, message_count=%d", len(state.get("messages", [])))
@@ -63,10 +68,8 @@ def answer_general(state: GraphState):
         logger.exception("answer_general: failed to generate response")
         message = "Something went wrong please try again."
 
-    return {
-        "messages": [AIMessage(content=message)],
-        "error": None
-    }
+    return {"messages": [AIMessage(content=message)], "error": None}
+
 
 def recommend(state: GraphState):
     logger.debug("recommend: start, filters=%s", state.get("filters"))

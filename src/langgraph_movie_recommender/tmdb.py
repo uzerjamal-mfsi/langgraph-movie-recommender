@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import time
 
@@ -166,7 +167,9 @@ class TMDBClient:
                 continue
             except requests.exceptions.ConnectionError as error:
                 if attempt == MAX_ATTEMPTS:
-                    raise TMDBError("Could not reach TMDB. Check your connection and try again.") from error
+                    raise TMDBError(
+                        "Could not reach TMDB. Check your connection and try again."
+                    ) from error
                 self._wait_before_retry(attempt)
                 continue
 
@@ -201,10 +204,8 @@ class TMDBClient:
         if response is not None and response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
             if retry_after:
-                try:
+                with contextlib.suppress(ValueError):
                     delay = min(max(float(retry_after), 0.0), MAX_RETRY_AFTER_SECONDS)
-                except ValueError:
-                    pass
         time.sleep(delay)
 
     def _validate_media_type(self, media_type):
@@ -220,7 +221,9 @@ class TMDBClient:
         if not isinstance(tmdb_id, int) or not isinstance(title, str) or not title.strip():
             return None
 
-        release_date = payload.get("release_date") if media_type == "movie" else payload.get("first_air_date")
+        release_date = (
+            payload.get("release_date") if media_type == "movie" else payload.get("first_air_date")
+        )
         return MediaItem(
             tmdb_id=tmdb_id,
             media_type=media_type,
@@ -264,17 +267,16 @@ class TMDBClient:
             return []
 
         mapping = GENRE_NAMES[media_type]
-        return list(dict.fromkeys(mapping[genre_id] for genre_id in genre_ids if genre_id in mapping))
+        return list(
+            dict.fromkeys(mapping[genre_id] for genre_id in genre_ids if genre_id in mapping)
+        )
 
 
 def genre_ids_from_names(genres, media_type):
     if media_type not in VALID_MEDIA_TYPES:
         return []
 
-    lookup = {
-        name.casefold(): genre_id
-        for genre_id, name in GENRE_NAMES[media_type].items()
-    }
+    lookup = {name.casefold(): genre_id for genre_id, name in GENRE_NAMES[media_type].items()}
     return [
         lookup[genre.casefold()]
         for genre in genres

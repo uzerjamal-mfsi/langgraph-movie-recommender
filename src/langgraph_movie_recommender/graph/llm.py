@@ -6,6 +6,7 @@ from langgraph_movie_recommender.config import get_settings
 
 MODEL_TIMEOUT_MILLISECONDS = 45000
 
+
 @lru_cache
 def get_chat_model():
     settings = get_settings()

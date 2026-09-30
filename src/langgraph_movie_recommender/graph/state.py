@@ -5,9 +5,11 @@ from langgraph.graph import add_messages
 
 Intent = Literal["recommend", "title_question", "general"]
 
+
 class ConversationMetadata(TypedDict, total=False):
     thread_id: str
     turn: int
+
 
 class GraphState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]

@@ -2,6 +2,7 @@ from langgraph_movie_recommender.tmdb import TMDBClient, genre_ids_from_names
 
 RESULT_LIMIT = 10
 
+
 def find_candidates(filters):
     filters = filters or {}
     media_type = filters.get("media_type", "movie")
@@ -10,7 +11,7 @@ def find_candidates(filters):
         media_type = "movie"
 
     media_types = ("movie", "tv") if media_type == "both" else (media_type,)
-    
+
     genres = filters.get("genres") or []
 
     if isinstance(genres, str):
@@ -53,6 +54,7 @@ def find_candidates(filters):
             unique.append(item)
 
     return unique[:RESULT_LIMIT]
+
 
 def format_recommendations(items):
     if not items:
