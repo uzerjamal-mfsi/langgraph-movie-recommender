@@ -5,9 +5,10 @@ from sqlalchemy.engine import URL
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
+from langgraph_movie_recommender.config import DEFAULT_DATA_DIR, get_settings
 from langgraph_movie_recommender.db.models import Base
 
-DEFAULT_DATABASE_PATH = Path("data/library.db")
+DEFAULT_DATABASE_PATH = DEFAULT_DATA_DIR / "library.db"
 SQLITE_BUSY_TIMEOUT_MILLISECONDS = 5000
 
 
@@ -20,7 +21,10 @@ def _configure_sqlite_connection(dbapi_connection):
 
 
 class Database:
-    def __init__(self, db_path=DEFAULT_DATABASE_PATH):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = get_settings().library_db_path
+
         path = Path(db_path).resolve()
         path.parent.mkdir(parents=True, exist_ok=True)
 

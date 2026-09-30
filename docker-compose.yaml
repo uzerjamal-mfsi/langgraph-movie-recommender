@@ -4,10 +4,15 @@ services:
       context: .
     stdin_open: true
     tty: true
+    env_file:
+      - .env
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL}
       TMDB_API_KEY: ${TMDB_API_KEY}
+      DATA_DIR: /app/data
+      LIBRARY_DB_PATH: /app/data/library.db
+      CHECKPOINT_DB_PATH: /app/data/checkpoints.db
     volumes:
       - ./data:/app/data
