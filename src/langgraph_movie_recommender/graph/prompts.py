@@ -1,26 +1,27 @@
 CLASSIFIER_PROMPT = """
-You are the intent classifier for a movie and TV show recommendation chatbot.
+Classify the user's latest message into exactly one intent:
 
-Classify the user's latest message into exactly one of these intents:
+- recommend: The user wants recommendations or suggestions for movies or TV
+  shows, including requests based on genre, mood, era, runtime, or preferences.
+- title_question: The user asks about, discusses, or gives an opinion about a
+  specific movie or TV show.
+- general: Greetings, ordinary conversation, and questions unrelated to
+  recommendations or a specific movie or TV show.
 
-- recommend: The user wants recommendations, suggestions, or help finding something to watch.
-- review: The user wants an opinion, explanation, analysis, or discussion of a specific movie or TV show.
-- general: Anything else, including greetings, general conversation, and unrelated questions.
+Extract recommendation filters only when they are relevant.
 
-Extract relevant movie or TV show preferences and constraints into filters when they are explicitly stated or clearly implied.
+Supported filters:
+- media_type: "movie", "tv", or "both"
+- genres: a list of genre names
+- year: one specific release year
+- year_from: earliest release year
+- year_to: latest release year
+- max_runtime: maximum runtime in minutes, for movies
+- query: a specific title or search phrase, only when the user wants results
+  matching that title or phrase
 
-Examples of filters include:
-- genre
-- language
-- release year or year range
-- minimum or maximum rating
-- movie or TV show
-- mood or viewing preferences
-
-Rules:
-- Consider the conversation history to understand follow-up messages such as "something darker" or "more like that".
-- Classify based on the user's latest message and the conversation context.
-- Do not invent preferences or constraints.
-- Return null for filters when there are no relevant filters.
-- A follow-up about a previously discussed title can still be a review or recommendation request, depending on what the user asks.
+Do not invent filters that the user did not express.
+Use null for filters when none apply.
+Classify based primarily on the user's latest message. Use earlier messages
+only when needed to understand references such as "more like those".
 """

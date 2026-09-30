@@ -84,7 +84,7 @@ class TMDBClient:
     def __enter__(self):
         return self
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
     def close(self):
@@ -93,15 +93,48 @@ class TMDBClient:
     def search(self, query, media_type="movie", limit=5):
         self._validate_media_type(media_type)
         clean_query = query.strip()
-        
+
         if not clean_query or limit <= 0:
             return []
 
-        payload = self._request(
-            f"/search/{media_type}",
-            {"query": clean_query},
-        )
-        results = payload.get("results")
+        payload = self._request(f"/search/{media_type}", {"query": clean_query})
+        return self._normalize_results(payload.get("results"), media_type, limit)
+
+    def discover(
+        self,
+        media_type="movie",
+        genre_ids=None,
+        max_runtime=None,
+        year=None,
+        year_from=None,
+        year_to=None,
+        limit=10,
+    ):
+        self._validate_media_type(media_type)
+
+        if limit <= 0:
+            return []
+
+        date_field = "primary_release_date" if media_type == "movie" else "first_air_date"
+        params = {"sort_by": "vote_average.desc", "vote_count.gte": 100}
+
+        if genre_ids:
+            params["with_genres"] = ",".join(str(genre_id) for genre_id in genre_ids)
+        if year is not None:
+            params[f"{date_field}.gte"] = f"{year}-01-01"
+            params[f"{date_field}.lte"] = f"{year}-12-31"
+        else:
+            if year_from is not None:
+                params[f"{date_field}.gte"] = f"{year_from}-01-01"
+            if year_to is not None:
+                params[f"{date_field}.lte"] = f"{year_to}-12-31"
+        if max_runtime is not None and media_type == "movie":
+            params["with_runtime.lte"] = max_runtime
+
+        payload = self._request(f"/discover/{media_type}", params)
+        return self._normalize_results(payload.get("results"), media_type, limit)
+
+    def _normalize_results(self, results, media_type, limit):
         if not isinstance(results, list):
             return []
 
@@ -109,8 +142,7 @@ class TMDBClient:
         for record in results:
             if len(items) >= limit:
                 break
-            if not isinstance(record, dict):
-                continue
+
             item = self._normalize(record, media_type)
             if item is not None:
                 items.append(item)
@@ -196,6 +228,8 @@ class TMDBClient:
             year=self._parse_year(release_date),
             overview=self._clean_overview(payload.get("overview")),
             genres=self._extract_genres(payload, media_type),
+            vote_average=payload.get("vote_average") or 0.0,
+            popularity=payload.get("popularity") or 0.0,
             tmdb_url=f"{TMDB_WEB_URL}/{media_type}/{tmdb_id}",
         )
 
@@ -231,6 +265,21 @@ class TMDBClient:
 
         mapping = GENRE_NAMES[media_type]
         return list(dict.fromkeys(mapping[genre_id] for genre_id in genre_ids if genre_id in mapping))
+
+
+def genre_ids_from_names(genres, media_type):
+    if media_type not in VALID_MEDIA_TYPES:
+        return []
+
+    lookup = {
+        name.casefold(): genre_id
+        for genre_id, name in GENRE_NAMES[media_type].items()
+    }
+    return [
+        lookup[genre.casefold()]
+        for genre in genres
+        if isinstance(genre, str) and genre.casefold() in lookup
+    ]
 
 
 def resolve_media_item(title, media_type, year) -> MediaItem:

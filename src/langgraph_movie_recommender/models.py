@@ -24,6 +24,8 @@ class MediaItem(BaseModel):
     year: int | None = None
     overview: str = ""
     genres: list[str] = Field(default_factory=list)
+    vote_average: float = 0.0
+    popularity: float = 0.0
     tmdb_url: str
 
 

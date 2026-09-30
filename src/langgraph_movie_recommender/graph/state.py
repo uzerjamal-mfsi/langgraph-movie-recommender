@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph import add_messages
 
-Intent = Literal["recommend", "review", "general"]
+Intent = Literal["recommend", "title_question", "general"]
 
 class ConversationMetadata(TypedDict, total=False):
     thread_id: str
