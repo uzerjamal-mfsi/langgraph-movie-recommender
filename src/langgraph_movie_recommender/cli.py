@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from langchain_core.messages import HumanMessage
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from langgraph_movie_recommender.config import get_settings
 from langgraph_movie_recommender.graph.workflow import build_workflow
@@ -47,37 +48,43 @@ def read_message():
 
 def run_chat(thread_id=None):
     settings = get_settings()
+    settings.checkpoint_db_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
     logging.basicConfig(level=settings.log_level)
     session_thread_id = resolve_thread_id(thread_id)
-    workflow = build_workflow()
     config = {"configurable": {"thread_id": session_thread_id}}
 
-    print(GREETING_MESSAGE)
-    print(f"Session thread: {session_thread_id}")
+    with SqliteSaver.from_conn_string(str(settings.checkpoint_db_path)) as checkpointer:
+        workflow = build_workflow(checkpointer=checkpointer)
 
-    while True:
-        message = read_message()
-        if message is None:
-            break
-        if not message:
-            continue
+        print(GREETING_MESSAGE)
+        print(f"Session thread: {session_thread_id}")
 
-        try:
-            result = workflow.invoke(
-                {"messages": [HumanMessage(content=message)]},
-                config=config,
-            )
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            print(f'Assistant: ERROR: {e} \n Please try again.')
-            continue
+        while True:
+            message = read_message()
+            if message is None:
+                break
+            if not message:
+                continue
 
-        messages = result.get("messages") or []
-        if messages:
-            print(f'Assistant: {messages[-1].content}')
-        else:
-            print(f'Assistant: I did not produce a response. Please try again')
+            try:
+                result = workflow.invoke(
+                    {"messages": [HumanMessage(content=message)]},
+                    config=config,
+                )
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                print(f'Assistant: ERROR: {e} \n Please try again.')
+                continue
+
+            messages = result.get("messages") or []
+            if messages:
+                print(f'Assistant: {messages[-1].content}')
+            else:
+                print(f'Assistant: I did not produce a response. Please try again')
 
     print(EXIT_MESSAGE)
     return 0

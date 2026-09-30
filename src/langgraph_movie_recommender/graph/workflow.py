@@ -4,7 +4,7 @@ from langgraph_movie_recommender.graph.nodes import answer_general, classify_int
 from langgraph_movie_recommender.graph.state import GraphState
 
 
-def build_workflow():
+def build_workflow(checkpointer=None):
     workflow = StateGraph(GraphState)
 
     workflow.add_node("classify_intent", classify_intent)
@@ -23,4 +23,4 @@ def build_workflow():
     workflow.add_edge("recommend", END)
     workflow.add_edge("answer_general", END)
 
-    return workflow.compile()
+    return workflow.compile(checkpointer=checkpointer)
