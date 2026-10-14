@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from langgraph_movie_recommender.config import get_settings
+from langgraph_movie_recommender.db.session import init_db
 from langgraph_movie_recommender.graph.workflow import build_workflow
 
 GREETING_MESSAGE = """Movie & TV Recommender
@@ -47,6 +48,7 @@ def read_message():
 
 
 def run_chat(thread_id=None):
+    init_db()
     settings = get_settings()
     settings.checkpoint_db_path.parent.mkdir(
         parents=True,

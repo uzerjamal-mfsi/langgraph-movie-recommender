@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 MediaType = Literal["movie", "tv"]
 PreferenceKind = Literal["like", "dislike", "neutral"]
+PreferenceSource = Literal["explicit", "inferred"]
 
 
 def utc_now() -> datetime:
@@ -57,6 +58,10 @@ class Preference(BaseModel):
     id: str = Field(min_length=1)
     text: str = Field(min_length=1)
     kind: PreferenceKind
+    source: PreferenceSource = "explicit"
+    source_title: str | None = None
+    source_media_type: MediaType | None = None
+    source_tmdb_id: int | None = Field(default=None, gt=0)
     updated_at: datetime = Field(default_factory=utc_now)
 
     @field_validator("id", "text")

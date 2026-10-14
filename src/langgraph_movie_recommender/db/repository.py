@@ -1,7 +1,17 @@
 from sqlalchemy import select
 
-from langgraph_movie_recommender.db.models import LibraryItemRecord, PreferenceRecord
-from langgraph_movie_recommender.models import LibraryItem, Preference, utc_now
+from langgraph_movie_recommender.db.models import (
+    LibraryItemRecord,
+    PreferenceRecord,
+)
+from langgraph_movie_recommender.db.session import get_session
+from langgraph_movie_recommender.models import (
+    LibraryItem,
+    Preference,
+    utc_now,
+)
+
+DEFAULT_PROFILE_ID = "default"
 
 
 def _library_item(record):
@@ -22,92 +32,129 @@ def _preference(record):
         id=record.id,
         text=record.text,
         kind=record.kind,
+        source=record.source,
+        source_title=record.source_title,
+        source_media_type=record.source_media_type,
+        source_tmdb_id=record.source_tmdb_id,
         updated_at=record.updated_at,
     )
 
 
-class LibraryRepository:
-    def __init__(self, database):
-        self._database = database
+def get_library(profile_id=DEFAULT_PROFILE_ID):
+    with get_session() as session:
+        records = session.scalars(
+            select(LibraryItemRecord)
+            .where(LibraryItemRecord.profile_id == profile_id)
+            .order_by(LibraryItemRecord.title)
+        ).all()
 
-    def get(self, media_type, tmdb_id):
-        with self._database.session_factory() as session:
-            record = session.get(LibraryItemRecord, (media_type, tmdb_id))
-            return _library_item(record) if record else None
+        return [_library_item(record) for record in records]
 
-    def upsert(self, media_item, watched=False, rating=None, review=None):
-        with self._database.session_factory.begin() as session:
-            record = session.get(
-                LibraryItemRecord,
-                (media_item.media_type, media_item.tmdb_id),
+
+def get_preferences(profile_id=DEFAULT_PROFILE_ID):
+    with get_session() as session:
+        records = session.scalars(
+            select(PreferenceRecord)
+            .where(PreferenceRecord.profile_id == profile_id)
+            .order_by(PreferenceRecord.text)
+        ).all()
+
+        return [_preference(record) for record in records]
+
+
+def find_library_item(profile_id, media_type, tmdb_id):
+    with get_session() as session:
+        record = session.scalar(
+            select(LibraryItemRecord).where(
+                LibraryItemRecord.profile_id == profile_id,
+                LibraryItemRecord.media_type == media_type,
+                LibraryItemRecord.tmdb_id == tmdb_id,
             )
+        )
+
+        return _library_item(record) if record else None
+
+
+def save_library_item(profile_id, item):
+    with get_session() as session:
+        with session.begin():
+            record = session.scalar(
+                select(LibraryItemRecord).where(
+                    LibraryItemRecord.profile_id == profile_id,
+                    LibraryItemRecord.media_type == item.media_type,
+                    LibraryItemRecord.tmdb_id == item.tmdb_id,
+                )
+            )
+
             if record is None:
                 record = LibraryItemRecord(
-                    media_type=media_item.media_type,
-                    tmdb_id=media_item.tmdb_id,
+                    profile_id=profile_id,
+                    media_type=item.media_type,
+                    tmdb_id=item.tmdb_id,
                 )
                 session.add(record)
 
-            record.title = media_item.title
-            record.year = media_item.year
-            record.watched = watched
-            record.rating = rating
-            record.review = review
+            record.title = item.title
+            record.year = item.year
+            record.watched = item.watched
+            record.rating = item.rating
+            record.review = item.review
             record.updated_at = utc_now()
-            session.flush()
-            return _library_item(record)
 
-    def list(self):
-        statement = select(LibraryItemRecord).order_by(
-            LibraryItemRecord.updated_at.desc(),
-            LibraryItemRecord.title.collate("NOCASE"),
-        )
-        with self._database.session_factory() as session:
-            return [_library_item(record) for record in session.scalars(statement)]
+        return _library_item(record)
 
-    def delete(self, media_type, tmdb_id):
-        with self._database.session_factory.begin() as session:
-            record = session.get(LibraryItemRecord, (media_type, tmdb_id))
+
+def save_preference(profile_id, preference):
+    with get_session() as session:
+        with session.begin():
+            record = session.get(PreferenceRecord, preference.id)
+
+            if record is not None and record.profile_id != profile_id:
+                record = None
+
             if record is None:
-                return False
-            session.delete(record)
-            return True
+                record = session.scalar(
+                    select(PreferenceRecord).where(
+                        PreferenceRecord.profile_id == profile_id,
+                        PreferenceRecord.text == preference.text,
+                        PreferenceRecord.kind
+                        == str(getattr(preference.kind, "value", preference.kind)),
+                    )
+                )
 
+            kind = str(getattr(preference.kind, "value", preference.kind))
 
-class PreferenceRepository:
-    def __init__(self, database):
-        self._database = database
-
-    def get(self, preference_id):
-        with self._database.session_factory() as session:
-            record = session.get(PreferenceRecord, preference_id)
-            return _preference(record) if record else None
-
-    def upsert(self, preference_id, text, kind):
-        with self._database.session_factory.begin() as session:
-            record = session.get(PreferenceRecord, preference_id)
             if record is None:
-                record = PreferenceRecord(id=preference_id)
+                record = PreferenceRecord(
+                    id=preference.id,
+                    profile_id=profile_id,
+                    text=preference.text,
+                    kind=kind,
+                    updated_at=utc_now(),
+                )
                 session.add(record)
 
-            record.text = text
+            record.text = preference.text
             record.kind = kind
+            record.source = preference.source
+            record.source_title = preference.source_title
+            record.source_media_type = preference.source_media_type
+            record.source_tmdb_id = preference.source_tmdb_id
             record.updated_at = utc_now()
-            session.flush()
-            return _preference(record)
 
-    def list(self):
-        statement = select(PreferenceRecord).order_by(
-            PreferenceRecord.updated_at.desc(),
-            PreferenceRecord.id,
-        )
-        with self._database.session_factory() as session:
-            return [_preference(record) for record in session.scalars(statement)]
+        return _preference(record)
 
-    def delete(self, preference_id):
-        with self._database.session_factory.begin() as session:
-            record = session.get(PreferenceRecord, preference_id)
-            if record is None:
-                return False
-            session.delete(record)
-            return True
+
+def get_watched_ids(profile_id=DEFAULT_PROFILE_ID):
+    with get_session() as session:
+        records = session.execute(
+            select(
+                LibraryItemRecord.media_type,
+                LibraryItemRecord.tmdb_id,
+            ).where(
+                LibraryItemRecord.profile_id == profile_id,
+                LibraryItemRecord.watched.is_(True),
+            )
+        ).all()
+
+        return {(media_type, tmdb_id) for media_type, tmdb_id in records}
