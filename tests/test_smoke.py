@@ -24,8 +24,6 @@ APP_MODULES = [
     "langgraph_movie_recommender.graph.schemas",
     "langgraph_movie_recommender.graph.state",
     "langgraph_movie_recommender.graph.workflow",
-    "langgraph_movie_recommender.services",
-    "langgraph_movie_recommender.services.library",
 ]
 
 REQUIRED_ENV_VARS = {
