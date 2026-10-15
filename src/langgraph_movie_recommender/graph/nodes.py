@@ -1,18 +1,42 @@
 import logging
+from uuid import uuid4
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from langgraph_movie_recommender.db.repository import (
+    DEFAULT_PROFILE_ID,
+    find_library_item,
+    save_library_item,
+    save_preference,
+)
 from langgraph_movie_recommender.graph.llm import get_chat_model
-from langgraph_movie_recommender.graph.prompts import CLASSIFIER_PROMPT
+from langgraph_movie_recommender.graph.prompts import (
+    CLASSIFIER_PROMPT,
+    FEEDBACK_EXTRACTION_PROMPT,
+    PREFERENCE_EXTRACTION_PROMPT,
+)
 from langgraph_movie_recommender.graph.recommendations import (
     find_candidates,
     format_recommendations,
 )
-from langgraph_movie_recommender.graph.schemas import IntentClassification
+from langgraph_movie_recommender.graph.schemas import (
+    FeedbackExtraction,
+    IntentClassification,
+    PreferenceExtraction,
+)
 from langgraph_movie_recommender.graph.state import GraphState
-from langgraph_movie_recommender.tmdb import TMDBError
+from langgraph_movie_recommender.models import LibraryItem, Preference, utc_now
+from langgraph_movie_recommender.tmdb import TitleResolutionError, TMDBError, resolve_media_item
 
 logger = logging.getLogger(__name__)
+
+
+def _get_latest_user_message(state: GraphState):
+    for message in reversed(state["messages"]):
+        if isinstance(message, HumanMessage):
+            return message.content
+
+    return ""
 
 
 def classify_intent(state: GraphState, config):
@@ -88,5 +112,212 @@ def recommend(state: GraphState):
 
     return {
         "messages": [AIMessage(content=response)],
+        "error": None,
+    }
+
+
+def extract_feedback(state: GraphState):
+    message = _get_latest_user_message(state)
+
+    if not message:
+        return {
+            "error": "I couldn't find your latest message",
+            "feedback": None,
+        }
+
+    result = (
+        get_chat_model()
+        .with_structured_output(FeedbackExtraction)
+        .invoke([SystemMessage(content=FEEDBACK_EXTRACTION_PROMPT), HumanMessage(content=message)])
+    )
+
+    feedback = result.model_dump()
+
+    if feedback["rating"] is not None and not 1 <= feedback["rating"] <= 10:
+        feedback["rating"] = None
+
+    if not feedback["title"]:
+        return {
+            "feedback": feedback,
+            "error": "I couldn't identify a title",
+        }
+
+    return {"feedback": feedback, "error": None}
+
+
+def resolve_title(state: GraphState):
+    feedback = state.get("feedback")
+
+    if not feedback or state.get("error"):
+        return {}
+
+    title = feedback.get("title")
+    media_type = feedback.get("media_type")
+    year = feedback.get("year")
+
+    if not title:
+        return {"error": "I couldn't identify the title to save"}
+
+    if media_type not in {"movie", "tv"}:
+        return {
+            "error": (
+                f"Is '{title}' a movie or a TV show? "
+                "I need that detail to identify the correct title."
+            )
+        }
+
+    try:
+        item = resolve_media_item(title, media_type, year)
+    except TitleResolutionError:
+        return {
+            "error": f"I couldn't match '{title}' to a TMDB title. Please provide the exact title and year"
+        }
+
+    return {
+        "resolved_title": item.model_dump(),
+        "error": None,
+    }
+
+
+def save_feedback(state: GraphState):
+    if state.get("error"):
+        return {"messages": [AIMessage(content=state["error"])]}
+
+    feedback = state.get("feedback")
+    resolved = state.get("resolved_title")
+
+    if not feedback or not resolved:
+        return {"messages": [AIMessage(content="I couldn't identify the title")]}
+
+    profile_id = DEFAULT_PROFILE_ID
+    media_type = resolved["media_type"]
+    tmdb_id = resolved["tmdb_id"]
+
+    existing = find_library_item(profile_id, media_type, tmdb_id)
+
+    watched = feedback.get("watched")
+    rating = feedback.get("rating")
+    review = feedback.get("review")
+
+    item = LibraryItem(
+        media_type=media_type,
+        tmdb_id=tmdb_id,
+        title=resolved["title"],
+        year=resolved.get("year"),
+        watched=(watched if watched is not None else existing.watched if existing else False),
+        rating=(rating if rating is not None else existing.rating if existing else None),
+        review=(review if review else existing.review if existing else None),
+        updated_at=utc_now(),
+    )
+
+    saved_item = save_library_item(profile_id, item)
+
+    saved_preferences = []
+
+    for aspect in feedback["positive_aspects"]:
+        saved_preferences.append(
+            Preference(
+                id=str(uuid4()),
+                text=aspect,
+                kind="like",
+                source="inferred",
+                source_title=saved_item.title,
+                source_media_type=media_type,
+                source_tmdb_id=tmdb_id,
+                updated_at=utc_now(),
+            )
+        )
+
+    for aspect in feedback["negative_aspects"]:
+        saved_preferences.append(
+            Preference(
+                id=str(uuid4()),
+                text=aspect,
+                kind="dislike",
+                source="inferred",
+                source_title=saved_item.title,
+                source_media_type=media_type,
+                source_tmdb_id=tmdb_id,
+                updated_at=utc_now(),
+            )
+        )
+
+    for preference in saved_preferences:
+        save_preference(profile_id, preference)
+
+    details = [f"Saved feedback for {saved_item.title}"]
+
+    if watched is True:
+        details.append("marked as watched")
+    if rating is not None:
+        details.append(f"rating {rating}/10")
+    if review:
+        details.append("saved your review")
+    if saved_preferences:
+        details.append(f"saved {len(saved_preferences)} title-specific aspect(s)")
+
+    return {
+        "messages": [AIMessage(content="I have " + ", ".join(details) + ".")],
+        "saved_summary": ", ".join(details),
+        "error": None,
+    }
+
+
+def extract_preferences(state: GraphState):
+    message = _get_latest_user_message(state)
+
+    if not message:
+        return {
+            "extracted_preferences": [],
+            "error": "I couldn't find your latest message to extract preferences from.",
+        }
+
+    result = (
+        get_chat_model()
+        .with_structured_output(PreferenceExtraction)
+        .invoke(
+            [
+                SystemMessage(content=PREFERENCE_EXTRACTION_PROMPT),
+                HumanMessage(content=message),
+            ]
+        )
+    )
+
+    return {
+        "extracted_preferences": [preference.model_dump() for preference in result.preferences],
+        "error": None,
+    }
+
+
+def save_preferences(state):
+    if state.get("error"):
+        return {"messages": [AIMessage(content=state["error"])]}
+
+    preferences = state.get("extracted_preferences", [])
+
+    if not preferences:
+        return {
+            "messages": [
+                AIMessage(content="I didn't find any explicit general preferences to save.")
+            ]
+        }
+
+    saved = []
+
+    for extracted in preferences:
+        preference = Preference(
+            id=str(uuid4()),
+            text=extracted["text"],
+            kind=extracted["kind"],
+            source="explicit",
+            updated_at=utc_now(),
+        )
+
+        save_preference(DEFAULT_PROFILE_ID, preference)
+        saved.append(preference.text)
+
+    return {
+        "messages": [AIMessage(content="Saved your preferences: " + "; ".join(saved) + ".")],
+        "saved_summary": "; ".join(saved),
         "error": None,
     }

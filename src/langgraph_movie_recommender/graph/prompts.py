@@ -1,12 +1,17 @@
 CLASSIFIER_PROMPT = """
 Classify the user's latest message into exactly one intent:
 
-- recommend: The user wants recommendations or suggestions for movies or TV
-  shows, including requests based on genre, mood, era, runtime, or preferences.
-- title_question: The user asks about, discusses, or gives an opinion about a
-  specific movie or TV show.
-- general: Greetings, ordinary conversation, and questions unrelated to
-  recommendations or a specific movie or TV show.
+Intent rules:
+- record_feedback: The user describes having watched or experienced a specific movie or TV show, gives a rating, or shares an opinion about a specific title.
+- update_preferences: The user explicitly states or changes a general preference about movies or TV shows.
+- recommend: The user asks for titles to watch or requests recommendations.
+- title_question: The user asks a question about a specific movie or TV show.
+- general: Other conversation.
+
+If the user describes feedback about a particular title, prefer record_feedback.
+If the user states a general taste preference, prefer update_preferences.
+Do not classify a simple recommendation request as a preference update.
+Do not infer a general preference from an opinion about one title.
 
 Extract recommendation filters only when they are relevant.
 
@@ -24,4 +29,32 @@ Do not invent filters that the user did not express.
 Use null for filters when none apply.
 Classify based primarily on the user's latest message. Use earlier messages
 only when needed to understand references such as "more like those".
+"""
+
+FEEDBACK_EXTRACTION_PROMPT = """
+Extract viewing feedback from the user's latest message.
+
+Rules:
+- Extract only information supported by the message.
+- Do not invent a title, media type, year, rating, or review.
+- Set watched to true only when the user clearly says they watched or finished the title.
+- Set watched to false only when the user explicitly says they have not watched it.
+- Otherwise set watched to null.
+- Extract a rating only when the user explicitly gives one. The supported scale is 1-10.
+- Preserve the user's meaning when summarizing a review.
+- Positive and negative aspects must refer to this particular title.
+- Do not turn an opinion about one title into a general preference.
+- If the message contains no title-specific viewing feedback, return a null title.
+"""
+
+PREFERENCE_EXTRACTION_PROMPT = """
+Extract general movie and TV preferences explicitly stated by the user.
+
+Rules:
+- Include only preferences that the user clearly states as general preferences.
+- Classify each preference as like or dislike.
+- Do not infer a general preference from a review of one particular title.
+- Do not include a request for one recommendation as a lasting preference.
+- Do not invent or broaden the user's statements.
+- Return an empty list when no general preferences are explicitly stated.
 """

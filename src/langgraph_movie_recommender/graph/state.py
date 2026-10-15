@@ -3,7 +3,13 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph import add_messages
 
-Intent = Literal["recommend", "title_question", "general"]
+Intent = Literal[
+    "recommend",
+    "title_question",
+    "general",
+    "record_feedback",
+    "update_preferences",
+]
 
 
 class GraphState(TypedDict):
@@ -11,3 +17,7 @@ class GraphState(TypedDict):
     intent: NotRequired[Intent]
     filters: NotRequired[dict[str, Any] | None]
     error: NotRequired[str | None]
+    feedback: NotRequired[dict[str, Any] | None]
+    resolved_title: NotRequired[dict[str, Any] | None]
+    extracted_preferences: NotRequired[list[dict[str, Any]]]
+    saved_summary: NotRequired[str | None]
