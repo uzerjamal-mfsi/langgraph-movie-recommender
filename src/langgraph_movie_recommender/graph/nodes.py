@@ -2,6 +2,7 @@ import logging
 from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langgraph.types import interrupt
 
 from langgraph_movie_recommender.db.repository import (
     DEFAULT_PROFILE_ID,
@@ -37,6 +38,26 @@ def _get_latest_user_message(state: GraphState):
             return message.content
 
     return ""
+
+
+def route_after_title_resolution(state):
+    if state.get("error"):
+        return "error"
+
+    if state.get("needs_clarification"):
+        return "clarify"
+
+    return "save"
+
+
+def route_after_clarification(state):
+    if state.get("error"):
+        return "error"
+
+    if state.get("needs_clarification"):
+        return "clarify"
+
+    return "save"
 
 
 def classify_intent(state: GraphState, config):
@@ -319,5 +340,62 @@ def save_preferences(state):
     return {
         "messages": [AIMessage(content="Saved your preferences: " + "; ".join(saved) + ".")],
         "saved_summary": "; ".join(saved),
+        "error": None,
+    }
+
+
+def ask_clarifying_question(state: GraphState):
+    question = state["clarification_question"]
+    candidates = state.get("clarification_candidates", [])
+
+    if candidates:
+        choices = "\n".join(
+            f"{i}. {item['title']} ({item.get('year') or 'unknown year'})"
+            for i, item in enumerate(candidates, start=1)
+        )
+        question = f"{question}\n{choices}\nPlease choose a title"
+
+    answer = interrupt(question)
+
+    return {"clasification_answer": str(answer)}
+
+
+def resolve_classification(state):
+    answer = state.get("clarification_answer", "").strip()
+    candidates = state.get("clasification_candidates", [])
+
+    if not answer:
+        return {"error": "I didn't receive a title choice. Please try again."}
+
+    if answer.isdigit():
+        choice = int(answer)
+
+        if 1 <= choice <= len(candidates):
+            selected = candidates[choice - 1]
+            return {
+                "resolved_title": selected,
+                "needs_clarification": False,
+                "error": None,
+            }
+
+    matches = [item for item in candidates if answer.casefold() == item["title"].casefold()]
+
+    if len(matches) == 1:
+        return {
+            "resolved_title": matches[0],
+            "needs_clarification": False,
+            "error": None,
+        }
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "I couldn't match that answer to one of the options. "
+                    "Please choose an option by number or give the exact title."
+                )
+            )
+        ],
+        "needs_clarification": True,
         "error": None,
     }

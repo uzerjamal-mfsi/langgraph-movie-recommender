@@ -21,3 +21,7 @@ class GraphState(TypedDict):
     resolved_title: NotRequired[dict[str, Any] | None]
     extracted_preferences: NotRequired[list[dict[str, Any]]]
     saved_summary: NotRequired[str | None]
+    clarification_question: NotRequired[str]
+    clarification_candidates: NotRequired[list[dict[str, Any]]]
+    clarification_answer: NotRequired[str]
+    needs_clarification: NotRequired[bool]

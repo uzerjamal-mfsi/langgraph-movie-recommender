@@ -2,11 +2,15 @@ from langgraph.graph import END, START, StateGraph
 
 from langgraph_movie_recommender.graph.nodes import (
     answer_general,
+    ask_clarifying_question,
     classify_intent,
     extract_feedback,
     extract_preferences,
     recommend,
+    resolve_classification,
     resolve_title,
+    route_after_clarification,
+    route_after_title_resolution,
     route_intent,
     save_feedback,
     save_preferences,
@@ -22,6 +26,8 @@ def build_workflow(checkpointer=None):
     workflow.add_node("answer_general", answer_general)
     workflow.add_node("extract_feedback", extract_feedback)
     workflow.add_node("resolve_title", resolve_title)
+    workflow.add_node("ask_clarifying_question", ask_clarifying_question)
+    workflow.add_node("resolve_clarification", resolve_classification)
     workflow.add_node("save_feedback", save_feedback)
     workflow.add_node("extract_preferences", extract_preferences)
     workflow.add_node("save_preferences", save_preferences)
@@ -45,7 +51,28 @@ def build_workflow(checkpointer=None):
     workflow.add_edge("answer_general", END)
 
     workflow.add_edge("extract_feedback", "resolve_title")
-    workflow.add_edge("resolve_title", "save_feedback")
+    workflow.add_conditional_edges(
+        "resolve_title",
+        route_after_title_resolution,
+        {
+            "clarify": "ask_clarifying_question",
+            "save": "save_feedback",
+            "error": "save_feedback",
+        },
+    )
+    workflow.add_edge(
+        "ask_clarifying_question",
+        "resolve_clarification",
+    )
+    workflow.add_conditional_edges(
+        "resolve_clarification",
+        route_after_clarification,
+        {
+            "clarify": "ask_clarifying_question",
+            "save": "save_feedback",
+            "error": "save_feedback",
+        },
+    )
     workflow.add_edge("save_feedback", END)
 
     workflow.add_edge("extract_preferences", "save_preferences")

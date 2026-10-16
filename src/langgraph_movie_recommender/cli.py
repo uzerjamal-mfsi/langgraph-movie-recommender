@@ -2,6 +2,7 @@ import logging
 import uuid
 
 from langchain_core.messages import HumanMessage
+from langchain_protocol import Command
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from langgraph_movie_recommender.config import get_settings
@@ -57,6 +58,7 @@ def run_chat(thread_id=None):
     logging.basicConfig(level=settings.log_level)
     session_thread_id = resolve_thread_id(thread_id)
     config = {"configurable": {"thread_id": session_thread_id}}
+    waiting_for_clarification = False
 
     with SqliteSaver.from_conn_string(str(settings.checkpoint_db_path)) as checkpointer:
         workflow = build_workflow(checkpointer=checkpointer)
@@ -72,15 +74,28 @@ def run_chat(thread_id=None):
                 continue
 
             try:
-                result = workflow.invoke(
-                    {"messages": [HumanMessage(content=message)]},
-                    config=config,
-                )
+                if waiting_for_clarification:
+                    result = workflow.invoke(Command(resume=message), config=config)
+                else:
+                    result = workflow.invoke(
+                        {"messages": [HumanMessage(content=message)]},
+                        config=config,
+                    )
             except KeyboardInterrupt:
                 break
             except Exception as e:
                 print(f"Assistant: ERROR: {e} \n Please try again.")
                 continue
+
+            interruptions = result.get("__interrupt__", [])
+
+            if interruptions:
+                waiting_for_clarification = True
+                for interruption in interruptions:
+                    print(f"Assistant: {interruption.value}")
+                continue
+
+            waiting_for_clarification = False
 
             messages = result.get("messages") or []
             if messages:
