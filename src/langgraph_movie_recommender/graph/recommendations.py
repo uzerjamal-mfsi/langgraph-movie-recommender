@@ -1,6 +1,30 @@
+import re
+
 from langgraph_movie_recommender.tmdb import TMDBClient, genre_ids_from_names
 
 RESULT_LIMIT = 10
+
+
+def _matches_constraints(item, filters):
+    media_type = filters.get("media_type")
+    if media_type in {"movie", "tv"} and item.media_type != media_type:
+        return False
+
+    year = filters.get("year")
+    if year is not None and item.year != year:
+        return False
+
+    year_from = filters.get("year_from")
+    if year_from is not None and (item.year is None or item.year < year_from):
+        return False
+
+    year_to = filters.get("year_to")
+    if year_to is not None and (item.year is None or item.year > year_to):
+        return False
+
+    genres = {genre.casefold() for genre in item.genres}
+    requested_genres = {genre.casefold() for genre in filters.get("genres", [])}
+    return not requested_genres or requested_genres.issubset(genres)
 
 
 def find_candidates(filters):
@@ -73,3 +97,46 @@ def format_recommendations(items):
             lines.append(f"   {item.overview}")
 
     return "\n".join(lines)
+
+
+def filter_recommendations(items, filters, watched_ids):
+    allow_rewatch = filters.get("allow_rewatch", False)
+
+    return [
+        item
+        for item in items
+        if _matches_constraints(item, filters)
+        and (allow_rewatch or (item.media_type, item.tmdb_id) not in watched_ids)
+    ]
+
+
+def _words(text):
+    return {word for word in re.findall(r"[a-z0-9]+", text.casefold()) if len(word) > 2}
+
+
+def _taste_score(item, likes, dislikes):
+    description = " ".join(
+        [
+            item.title,
+            item.overview or "",
+            " ".join(item.genres),
+        ]
+    )
+    words = _words(description)
+
+    score = sum(len(words & _words(preference)) for preference in likes)
+    score -= sum(len(words & _words(preference)) for preference in dislikes)
+
+    return score
+
+
+def personalize_recommendations(items, likes, dislikes):
+    return sorted(
+        items,
+        key=lambda item: (
+            _taste_score(item, likes, dislikes),
+            item.vote_average or 0,
+            item.popularity or 0,
+        ),
+        reverse=True,
+    )

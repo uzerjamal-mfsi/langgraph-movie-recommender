@@ -6,6 +6,7 @@ from langgraph_movie_recommender.graph.nodes import (
     classify_intent,
     extract_feedback,
     extract_preferences,
+    load_taste,
     recommend,
     resolve_classification,
     resolve_title,
@@ -22,6 +23,7 @@ def build_workflow(checkpointer=None):
     workflow = StateGraph(GraphState)
 
     workflow.add_node("classify_intent", classify_intent)
+    workflow.add_node("load_taste", load_taste)
     workflow.add_node("recommend", recommend)
     workflow.add_node("answer_general", answer_general)
     workflow.add_node("extract_feedback", extract_feedback)
@@ -38,7 +40,7 @@ def build_workflow(checkpointer=None):
         "classify_intent",
         route_intent,
         {
-            "recommend": "recommend",
+            "recommend": "load_taste",
             "title_question": "answer_general",
             "general": "answer_general",
             "record_feedback": "extract_feedback",
@@ -47,6 +49,7 @@ def build_workflow(checkpointer=None):
         },
     )
 
+    workflow.add_edge("load_taste", "recommend")
     workflow.add_edge("recommend", END)
     workflow.add_edge("answer_general", END)
 

@@ -7,6 +7,9 @@ from langgraph.types import interrupt
 from langgraph_movie_recommender.db.repository import (
     DEFAULT_PROFILE_ID,
     find_library_item,
+    get_library,
+    get_preferences,
+    get_watched_ids,
     save_library_item,
     save_preference,
 )
@@ -17,8 +20,10 @@ from langgraph_movie_recommender.graph.prompts import (
     PREFERENCE_EXTRACTION_PROMPT,
 )
 from langgraph_movie_recommender.graph.recommendations import (
+    filter_recommendations,
     find_candidates,
     format_recommendations,
+    personalize_recommendations,
 )
 from langgraph_movie_recommender.graph.schemas import (
     FeedbackExtraction,
@@ -119,10 +124,30 @@ def answer_general(state: GraphState):
 def recommend(state: GraphState):
     logger.debug("recommend: start, filters=%s", state.get("filters"))
 
+    filters = state.get("filters") or {}
+
     try:
-        items = find_candidates(state.get("filters"))
+        items = find_candidates(filters)
         logger.debug("recommend: found %d candidate(s)", len(items))
-        response = format_recommendations(items)
+
+        items = filter_recommendations(
+            items,
+            filters,
+            state.get("watched_ids", set()),
+        )
+        logger.debug("recommend: %d candidate(s) after filtering", len(items))
+
+        items = personalize_recommendations(
+            items,
+            state.get("taste_likes", []),
+            state.get("taste_dislikes", []),
+        )
+
+        if not items:
+            response = "I couldn't find recommendations matching your request and watch history."
+        else:
+            response = format_recommendations(items[:5])
+
         logger.debug("recommend: formatted response with %d characters", len(response))
     except TMDBError as e:
         logger.warning("recommend: TMDB error: %s", e)
@@ -398,4 +423,38 @@ def resolve_classification(state):
         ],
         "needs_clarification": True,
         "error": None,
+    }
+
+
+def load_taste(state: GraphState):
+    library = get_library(DEFAULT_PROFILE_ID)
+    preferences = get_preferences(DEFAULT_PROFILE_ID)
+    watched_ids = get_watched_ids(DEFAULT_PROFILE_ID)
+
+    ratings = [
+        f"{item.title}: {item.rating}/10" + (f" — {item.review}" if item.review else "")
+        for item in library
+        if item.watched and (item.rating is not None or item.review)
+    ]
+
+    likes = [preference.text for preference in preferences if preference.kind.value == "like"]
+
+    dislikes = [preference.text for preference in preferences if preference.kind.value == "dislike"]
+
+    context = []
+
+    if likes:
+        context.append("Likes: " + "; ".join(likes[:10]))
+
+    if dislikes:
+        context.append("Dislikes: " + "; ".join(dislikes[:10]))
+
+    if ratings:
+        context.append("Watched titles and feedback: " + "; ".join(ratings[:10]))
+
+    return {
+        "taste_context": "\n".join(context),
+        "taste_likes": likes,
+        "taste_dislikes": dislikes,
+        "watched_ids": watched_ids,
     }

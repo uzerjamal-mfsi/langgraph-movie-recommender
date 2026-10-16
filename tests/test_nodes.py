@@ -99,7 +99,7 @@ def test_recommend_success(monkeypatch):
     monkeypatch.setattr(nodes, "find_candidates", lambda filters: [make_item()])
     monkeypatch.setattr(nodes, "format_recommendations", lambda items: "Here are titles")
 
-    result = nodes.recommend({"filters": {"genres": ["Action"]}})
+    result = nodes.recommend({"filters": {}})
 
     assert result["messages"][0].content == "Here are titles"
     assert result["error"] is None

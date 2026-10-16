@@ -25,3 +25,7 @@ class GraphState(TypedDict):
     clarification_candidates: NotRequired[list[dict[str, Any]]]
     clarification_answer: NotRequired[str]
     needs_clarification: NotRequired[bool]
+    taste_context: NotRequired[str]
+    taste_likes: NotRequired[list[str]]
+    taste_dislikes: NotRequired[list[str]]
+    watched_ids: NotRequired[set[tuple[str, int]]]
