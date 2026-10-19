@@ -10,6 +10,7 @@ from langgraph_movie_recommender.graph.nodes import (
     recommend,
     resolve_classification,
     resolve_title,
+    retrieve_taste_memories,
     route_after_clarification,
     route_after_title_resolution,
     route_intent,
@@ -24,6 +25,7 @@ def build_workflow(checkpointer=None):
 
     workflow.add_node("classify_intent", classify_intent)
     workflow.add_node("load_taste", load_taste)
+    workflow.add_node("retrieve_taste_memories", retrieve_taste_memories)
     workflow.add_node("recommend", recommend)
     workflow.add_node("answer_general", answer_general)
     workflow.add_node("extract_feedback", extract_feedback)
@@ -49,7 +51,8 @@ def build_workflow(checkpointer=None):
         },
     )
 
-    workflow.add_edge("load_taste", "recommend")
+    workflow.add_edge("load_taste", "retrieve_taste_memories")
+    workflow.add_edge("retrieve_taste_memories", "recommend")
     workflow.add_edge("recommend", END)
     workflow.add_edge("answer_general", END)
 

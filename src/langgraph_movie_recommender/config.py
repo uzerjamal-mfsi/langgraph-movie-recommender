@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     library_db_path: Path | None = None
     checkpoint_db_path: Path | None = None
 
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "taste_memories"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_dimensions: int = 384
+
     @model_validator(mode="after")
     def apply_default_paths(self):
         if self.library_db_path is None:

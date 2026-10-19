@@ -9,11 +9,14 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "langchain-core>=1.6.13",
+    "langchain-huggingface>=1.2.3",
     "langchain-openrouter>=0.2.9",
+    "langchain-qdrant>=1.1.0",
     "langgraph>=1.2.16",
     "langgraph-checkpoint-sqlite>=3.1.2",
     "pydantic-settings>=2.16.1",
     "requests>=2.34.2",
+    "sentence-transformers>=6.2.0",
     "sqlalchemy>=2.1.5",
 ]
 

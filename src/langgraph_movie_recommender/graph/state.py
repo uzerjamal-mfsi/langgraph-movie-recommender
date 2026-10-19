@@ -28,4 +28,5 @@ class GraphState(TypedDict):
     taste_context: NotRequired[str]
     taste_likes: NotRequired[list[str]]
     taste_dislikes: NotRequired[list[str]]
+    relevant_taste_memories: NotRequired[list[str]]
     watched_ids: NotRequired[set[tuple[str, int]]]

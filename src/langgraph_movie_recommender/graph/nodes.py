@@ -31,6 +31,7 @@ from langgraph_movie_recommender.graph.schemas import (
     PreferenceExtraction,
 )
 from langgraph_movie_recommender.graph.state import GraphState
+from langgraph_movie_recommender.memory.vector_store import index_preference, search_relevant_taste
 from langgraph_movie_recommender.models import LibraryItem, Preference, utc_now
 from langgraph_movie_recommender.tmdb import TitleResolutionError, TMDBError, resolve_media_item
 
@@ -43,6 +44,20 @@ def _get_latest_user_message(state: GraphState):
             return message.content
 
     return ""
+
+
+def _index_saved_preference(profile_id, preference):
+    saved = next(
+        (
+            item
+            for item in get_preferences(profile_id)
+            if item.text == preference.text and item.kind == preference.kind
+        ),
+        None,
+    )
+
+    if saved:
+        index_preference(saved, profile_id)
 
 
 def route_after_title_resolution(state):
@@ -290,6 +305,7 @@ def save_feedback(state: GraphState):
 
     for preference in saved_preferences:
         save_preference(profile_id, preference)
+        _index_saved_preference(profile_id, preference)
 
     details = [f"Saved feedback for {saved_item.title}"]
 
@@ -360,6 +376,7 @@ def save_preferences(state):
         )
 
         save_preference(DEFAULT_PROFILE_ID, preference)
+        _index_saved_preference(DEFAULT_PROFILE_ID, preference)
         saved.append(preference.text)
 
     return {
@@ -437,9 +454,17 @@ def load_taste(state: GraphState):
         if item.watched and (item.rating is not None or item.review)
     ]
 
-    likes = [preference.text for preference in preferences if preference.kind.value == "like"]
+    likes = [
+        preference.text
+        for preference in preferences
+        if str(getattr(preference.kind, "value", preference.kind)) == "like"
+    ]
 
-    dislikes = [preference.text for preference in preferences if preference.kind.value == "dislike"]
+    dislikes = [
+        preference.text
+        for preference in preferences
+        if str(getattr(preference.kind, "value", preference.kind)) == "dislike"
+    ]
 
     context = []
 
@@ -457,4 +482,32 @@ def load_taste(state: GraphState):
         "taste_likes": likes,
         "taste_dislikes": dislikes,
         "watched_ids": watched_ids,
+    }
+
+
+def retrieve_taste_memories(state: GraphState):
+    message = _get_latest_user_message(state)
+
+    if not message:
+        return {}
+
+    memories = search_relevant_taste(message, limit=5)
+    likes = list(state.get("taste_likes", []))
+    dislikes = list(state.get("taste_dislikes", []))
+    relevant = []
+
+    for memory in memories:
+        text = memory.metadata.get("preference_text", memory.page_content)
+        kind = memory.metadata.get("preference_kind")
+        relevant.append(text)
+
+        if kind == "like" and text not in likes:
+            likes.append(text)
+        elif kind == "dislike" and text not in dislikes:
+            dislikes.append(text)
+
+    return {
+        "taste_likes": likes,
+        "taste_dislikes": dislikes,
+        "relevant_taste_memories": relevant,
     }
