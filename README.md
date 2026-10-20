@@ -65,3 +65,20 @@ Run the smoke tests without external API calls:
 ```bash
 uv run pytest
 ```
+
+## Workflow
+
+```
+START
+└── classify_intent
+    ├── recommend → load_taste → retrieve_taste_memories → recommend → END
+    ├── title_question → answer_general → END
+    ├── general → answer_general → END
+    ├── record_feedback → extract_feedback → resolve_title
+    │   ├── clarify → ask_clarifying_question → resolve_clarification
+    │   │   ├── clarify → ask_clarifying_question
+    │   │   └── save / error → save_feedback → END
+    │   └── save / error → save_feedback → END
+    ├── update_preferences → extract_preferences → save_preferences → END
+    └── error → END
+```
