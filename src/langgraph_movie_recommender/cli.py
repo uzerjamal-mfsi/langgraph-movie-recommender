@@ -17,6 +17,8 @@ EXIT_COMMANDS = {"exit", "quit"}
 MAX_MESSAGE_LENGTH = 2000
 PROMPT_LABEL = "You: "
 
+logger = logging.getLogger(__name__)
+
 
 def create_thread_id():
     return uuid.uuid4().hex
@@ -83,8 +85,9 @@ def run_chat(thread_id=None):
                     )
             except KeyboardInterrupt:
                 break
-            except Exception as e:
-                print(f"Assistant: ERROR: {e} \n Please try again.")
+            except Exception:
+                logger.exception("run_chat: failed to process message")
+                print("Assistant: Something went wrong. Please try again.")
                 continue
 
             interruptions = result.get("__interrupt__", [])

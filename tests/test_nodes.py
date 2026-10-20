@@ -264,8 +264,12 @@ def test_load_taste_failure(monkeypatch):
 
     monkeypatch.setattr(nodes, "get_library", raise_error)
 
-    with pytest.raises(RuntimeError):
-        nodes.load_taste({})
+    result = nodes.load_taste({})
+
+    assert result["taste_context"] == ""
+    assert result["taste_likes"] == []
+    assert result["taste_dislikes"] == []
+    assert result["watched_ids"] == set()
 
 
 def test_retrieve_taste_memories_success(monkeypatch):
@@ -289,5 +293,6 @@ def test_retrieve_taste_memories_failure(monkeypatch):
 
     monkeypatch.setattr(nodes, "search_relevant_taste", raise_error)
 
-    with pytest.raises(RuntimeError):
-        nodes.retrieve_taste_memories({"messages": [HumanMessage(content="sci-fi")]})
+    result = nodes.retrieve_taste_memories({"messages": [HumanMessage(content="sci-fi")]})
+
+    assert result == {}

@@ -186,13 +186,25 @@ def extract_feedback(state: GraphState):
             "feedback": None,
         }
 
-    result = (
-        get_chat_model()
-        .with_structured_output(FeedbackExtraction)
-        .invoke([SystemMessage(content=FEEDBACK_EXTRACTION_PROMPT), HumanMessage(content=message)])
-    )
+    try:
+        result = (
+            get_chat_model()
+            .with_structured_output(FeedbackExtraction)
+            .invoke(
+                [
+                    SystemMessage(content=FEEDBACK_EXTRACTION_PROMPT),
+                    HumanMessage(content=message),
+                ]
+            )
+        )
 
-    feedback = result.model_dump()
+        feedback = result.model_dump()
+    except Exception:
+        logger.exception("extract_feedback: failed to extract feedback")
+        return {
+            "feedback": None,
+            "error": "I couldn't process your feedback. Please try again later.",
+        }
 
     if feedback["rating"] is not None and not 1 <= feedback["rating"] <= 10:
         feedback["rating"] = None
@@ -211,6 +223,12 @@ def _resolve_title_candidates(title, media_type, year):
         matches = find_media_candidates(title, media_type, year)
     except (TMDBError, ValueError) as error:
         return {"error": str(error), "needs_clarification": False}
+    except Exception:
+        logger.exception("resolve_title: failed to resolve title")
+        return {
+            "error": "I couldn't look up that title right now. Please try again later.",
+            "needs_clarification": False,
+        }
 
     if not matches:
         year_label = f" from {year}" if year is not None else ""
@@ -275,79 +293,87 @@ def save_feedback(state: GraphState):
     if not feedback or not resolved:
         return {"messages": [AIMessage(content="I couldn't identify the title")]}
 
-    profile_id = DEFAULT_PROFILE_ID
-    media_type = resolved["media_type"]
-    tmdb_id = resolved["tmdb_id"]
+    try:
+        profile_id = DEFAULT_PROFILE_ID
+        media_type = resolved["media_type"]
+        tmdb_id = resolved["tmdb_id"]
 
-    existing = find_library_item(profile_id, media_type, tmdb_id)
+        existing = find_library_item(profile_id, media_type, tmdb_id)
 
-    watched = feedback.get("watched")
-    rating = feedback.get("rating")
-    review = feedback.get("review")
+        watched = feedback.get("watched")
+        rating = feedback.get("rating")
+        review = feedback.get("review")
 
-    item = LibraryItem(
-        media_type=media_type,
-        tmdb_id=tmdb_id,
-        title=resolved["title"],
-        year=resolved.get("year"),
-        watched=(watched if watched is not None else existing.watched if existing else False),
-        rating=(rating if rating is not None else existing.rating if existing else None),
-        review=(review if review else existing.review if existing else None),
-        updated_at=utc_now(),
-    )
-
-    saved_item = save_library_item(profile_id, item)
-
-    saved_preferences = []
-
-    for aspect in feedback["positive_aspects"]:
-        saved_preferences.append(
-            Preference(
-                id=str(uuid4()),
-                text=aspect,
-                kind="like",
-                source="inferred",
-                source_title=saved_item.title,
-                source_media_type=media_type,
-                source_tmdb_id=tmdb_id,
-                updated_at=utc_now(),
-            )
+        item = LibraryItem(
+            media_type=media_type,
+            tmdb_id=tmdb_id,
+            title=resolved["title"],
+            year=resolved.get("year"),
+            watched=(watched if watched is not None else existing.watched if existing else False),
+            rating=(rating if rating is not None else existing.rating if existing else None),
+            review=(review if review else existing.review if existing else None),
+            updated_at=utc_now(),
         )
 
-    for aspect in feedback["negative_aspects"]:
-        saved_preferences.append(
-            Preference(
-                id=str(uuid4()),
-                text=aspect,
-                kind="dislike",
-                source="inferred",
-                source_title=saved_item.title,
-                source_media_type=media_type,
-                source_tmdb_id=tmdb_id,
-                updated_at=utc_now(),
+        saved_item = save_library_item(profile_id, item)
+
+        saved_preferences = []
+
+        for aspect in feedback["positive_aspects"]:
+            saved_preferences.append(
+                Preference(
+                    id=str(uuid4()),
+                    text=aspect,
+                    kind="like",
+                    source="inferred",
+                    source_title=saved_item.title,
+                    source_media_type=media_type,
+                    source_tmdb_id=tmdb_id,
+                    updated_at=utc_now(),
+                )
             )
-        )
 
-    for preference in saved_preferences:
-        save_preference(profile_id, preference)
-        _index_saved_preference(profile_id, preference)
+        for aspect in feedback["negative_aspects"]:
+            saved_preferences.append(
+                Preference(
+                    id=str(uuid4()),
+                    text=aspect,
+                    kind="dislike",
+                    source="inferred",
+                    source_title=saved_item.title,
+                    source_media_type=media_type,
+                    source_tmdb_id=tmdb_id,
+                    updated_at=utc_now(),
+                )
+            )
 
-    details = [f"Saved feedback for {saved_item.title}"]
+        for preference in saved_preferences:
+            save_preference(profile_id, preference)
+            _index_saved_preference(profile_id, preference)
 
-    if watched is True:
-        details.append("marked as watched")
-    if rating is not None:
-        details.append(f"rating {rating}/10")
-    if review:
-        details.append("saved your review")
-    if saved_preferences:
-        details.append(f"saved {len(saved_preferences)} title-specific aspect(s)")
+        details = [f"Saved feedback for {saved_item.title}"]
 
-    return {
-        "messages": [AIMessage(content="I have " + ", ".join(details) + ".")],
-        "saved_summary": ", ".join(details),
-        "error": None,
-    }
+        if watched is True:
+            details.append("marked as watched")
+        if rating is not None:
+            details.append(f"rating {rating}/10")
+        if review:
+            details.append("saved your review")
+        if saved_preferences:
+            details.append(f"saved {len(saved_preferences)} title-specific aspect(s)")
+
+        return {
+            "messages": [AIMessage(content="I have " + ", ".join(details) + ".")],
+            "saved_summary": ", ".join(details),
+            "error": None,
+        }
+    except Exception:
+        logger.exception("save_feedback: failed to save feedback")
+        message = "I couldn't save your feedback. Please try again later."
+        return {
+            "messages": [AIMessage(content=message)],
+            "error": message,
+        }
 
 
 def extract_preferences(state: GraphState):
@@ -359,16 +385,23 @@ def extract_preferences(state: GraphState):
             "error": "I couldn't find your latest message to extract preferences from.",
         }
 
-    result = (
-        get_chat_model()
-        .with_structured_output(PreferenceExtraction)
-        .invoke(
-            [
-                SystemMessage(content=PREFERENCE_EXTRACTION_PROMPT),
-                HumanMessage(content=message),
-            ]
+    try:
+        result = (
+            get_chat_model()
+            .with_structured_output(PreferenceExtraction)
+            .invoke(
+                [
+                    SystemMessage(content=PREFERENCE_EXTRACTION_PROMPT),
+                    HumanMessage(content=message),
+                ]
+            )
         )
-    )
+    except Exception:
+        logger.exception("extract_preferences: failed to extract preferences")
+        return {
+            "extracted_preferences": [],
+            "error": "I couldn't process your preferences. Please try again later.",
+        }
 
     return {
         "extracted_preferences": [preference.model_dump() for preference in result.preferences],
@@ -391,18 +424,26 @@ def save_preferences(state):
 
     saved = []
 
-    for extracted in preferences:
-        preference = Preference(
-            id=str(uuid4()),
-            text=extracted["text"],
-            kind=extracted["kind"],
-            source="explicit",
-            updated_at=utc_now(),
-        )
+    try:
+        for extracted in preferences:
+            preference = Preference(
+                id=str(uuid4()),
+                text=extracted["text"],
+                kind=extracted["kind"],
+                source="explicit",
+                updated_at=utc_now(),
+            )
 
-        save_preference(DEFAULT_PROFILE_ID, preference)
-        _index_saved_preference(DEFAULT_PROFILE_ID, preference)
-        saved.append(preference.text)
+            save_preference(DEFAULT_PROFILE_ID, preference)
+            _index_saved_preference(DEFAULT_PROFILE_ID, preference)
+            saved.append(preference.text)
+    except Exception:
+        logger.exception("save_preferences: failed to save preferences")
+        message = "I couldn't save your preferences. Please try again later."
+        return {
+            "messages": [AIMessage(content=message)],
+            "error": message,
+        }
 
     return {
         "messages": [AIMessage(content="Saved your preferences: " + "; ".join(saved) + ".")],
@@ -481,45 +522,54 @@ def resolve_classification(state):
 
 
 def load_taste(state: GraphState):
-    library = get_library(DEFAULT_PROFILE_ID)
-    preferences = get_preferences(DEFAULT_PROFILE_ID)
-    watched_ids = get_watched_ids(DEFAULT_PROFILE_ID)
+    try:
+        library = get_library(DEFAULT_PROFILE_ID)
+        preferences = get_preferences(DEFAULT_PROFILE_ID)
+        watched_ids = get_watched_ids(DEFAULT_PROFILE_ID)
 
-    ratings = [
-        f"{item.title}: {item.rating}/10" + (f" — {item.review}" if item.review else "")
-        for item in library
-        if item.watched and (item.rating is not None or item.review)
-    ]
+        ratings = [
+            f"{item.title}: {item.rating}/10" + (f" — {item.review}" if item.review else "")
+            for item in library
+            if item.watched and (item.rating is not None or item.review)
+        ]
 
-    likes = [
-        preference.text
-        for preference in preferences
-        if str(getattr(preference.kind, "value", preference.kind)) == "like"
-    ]
+        likes = [
+            preference.text
+            for preference in preferences
+            if str(getattr(preference.kind, "value", preference.kind)) == "like"
+        ]
 
-    dislikes = [
-        preference.text
-        for preference in preferences
-        if str(getattr(preference.kind, "value", preference.kind)) == "dislike"
-    ]
+        dislikes = [
+            preference.text
+            for preference in preferences
+            if str(getattr(preference.kind, "value", preference.kind)) == "dislike"
+        ]
 
-    context = []
+        context = []
 
-    if likes:
-        context.append("Likes: " + "; ".join(likes[:10]))
+        if likes:
+            context.append("Likes: " + "; ".join(likes[:10]))
 
-    if dislikes:
-        context.append("Dislikes: " + "; ".join(dislikes[:10]))
+        if dislikes:
+            context.append("Dislikes: " + "; ".join(dislikes[:10]))
 
-    if ratings:
-        context.append("Watched titles and feedback: " + "; ".join(ratings[:10]))
+        if ratings:
+            context.append("Watched titles and feedback: " + "; ".join(ratings[:10]))
 
-    return {
-        "taste_context": "\n".join(context),
-        "taste_likes": likes,
-        "taste_dislikes": dislikes,
-        "watched_ids": watched_ids,
-    }
+        return {
+            "taste_context": "\n".join(context),
+            "taste_likes": likes,
+            "taste_dislikes": dislikes,
+            "watched_ids": watched_ids,
+        }
+    except Exception:
+        logger.exception("load_taste: failed to load taste profile")
+        return {
+            "taste_context": "",
+            "taste_likes": [],
+            "taste_dislikes": [],
+            "watched_ids": set(),
+        }
 
 
 def retrieve_taste_memories(state: GraphState):
@@ -528,7 +578,12 @@ def retrieve_taste_memories(state: GraphState):
     if not message:
         return {}
 
-    memories = search_relevant_taste(message, limit=5)
+    try:
+        memories = search_relevant_taste(message, limit=5)
+    except Exception:
+        logger.exception("retrieve_taste_memories: failed to retrieve taste memories")
+        return {}
+
     likes = list(state.get("taste_likes", []))
     dislikes = list(state.get("taste_dislikes", []))
     relevant = []
