@@ -207,7 +207,8 @@ def test_ask_clarifying_question_success(monkeypatch):
 
     result = nodes.ask_clarifying_question({"clarification_question": "Which one?"})
 
-    assert result == {"clasification_answer": "2"}
+    assert result["clarification_answer"] == "2"
+    assert [message.content for message in result["messages"]] == ["Which one?", "2"]
 
 
 def test_ask_clarifying_question_failure(monkeypatch):
@@ -224,7 +225,7 @@ def test_resolve_classification_success():
     result = nodes.resolve_classification(
         {
             "clarification_answer": "1",
-            "clasification_candidates": [make_item().model_dump()],
+            "clarification_candidates": [make_item().model_dump()],
         }
     )
 

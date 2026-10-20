@@ -284,7 +284,7 @@ def genre_ids_from_names(genres, media_type):
     ]
 
 
-def resolve_media_item(title, media_type, year) -> MediaItem:
+def find_media_candidates(title, media_type, year, limit=None):
     cleaned_title = title.strip()
     if not cleaned_title:
         raise ValueError("title must not be blank.")
@@ -299,10 +299,19 @@ def resolve_media_item(title, media_type, year) -> MediaItem:
     if year is not None:
         matches = [candidate for candidate in matches if candidate.year == year]
 
+    if limit is not None:
+        matches = matches[:limit]
+
+    return matches
+
+
+def resolve_media_item(title, media_type, year) -> MediaItem:
+    matches = find_media_candidates(title, media_type, year)
+
     if not matches:
         year_label = f" from {year}" if year is not None else ""
         raise TitleResolutionError(
-            f"No TMDB {media_type} found matching '{cleaned_title}'{year_label}."
+            f"No TMDB {media_type} found matching '{title.strip()}'{year_label}."
         )
     return matches[0]
 

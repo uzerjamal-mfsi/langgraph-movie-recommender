@@ -33,7 +33,7 @@ from langgraph_movie_recommender.graph.schemas import (
 from langgraph_movie_recommender.graph.state import GraphState
 from langgraph_movie_recommender.memory.vector_store import index_preference, search_relevant_taste
 from langgraph_movie_recommender.models import LibraryItem, Preference, utc_now
-from langgraph_movie_recommender.tmdb import TitleResolutionError, TMDBError, resolve_media_item
+from langgraph_movie_recommender.tmdb import TMDBError, find_media_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -206,6 +206,39 @@ def extract_feedback(state: GraphState):
     return {"feedback": feedback, "error": None}
 
 
+def _resolve_title_candidates(title, media_type, year):
+    try:
+        matches = find_media_candidates(title, media_type, year)
+    except (TMDBError, ValueError) as error:
+        return {"error": str(error), "needs_clarification": False}
+
+    if not matches:
+        year_label = f" from {year}" if year is not None else ""
+        return {
+            "error": (
+                f"I couldn't match '{title}' to a TMDB {media_type}{year_label}. "
+                "Please provide the exact title and year."
+            ),
+            "needs_clarification": False,
+        }
+
+    if len(matches) > 1:
+        return {
+            "clarification_question": (
+                f"I found multiple {media_type} titles matching '{title}'. Which one did you mean?"
+            ),
+            "clarification_candidates": [item.model_dump() for item in matches],
+            "needs_clarification": True,
+            "error": None,
+        }
+
+    return {
+        "resolved_title": matches[0].model_dump(),
+        "needs_clarification": False,
+        "error": None,
+    }
+
+
 def resolve_title(state: GraphState):
     feedback = state.get("feedback")
 
@@ -221,23 +254,15 @@ def resolve_title(state: GraphState):
 
     if media_type not in {"movie", "tv"}:
         return {
-            "error": (
-                f"Is '{title}' a movie or a TV show? "
-                "I need that detail to identify the correct title."
-            )
+            "clarification_question": (
+                f"Is '{title}' a movie or a TV show? Please reply with 'movie' or 'tv'."
+            ),
+            "clarification_candidates": [],
+            "needs_clarification": True,
+            "error": None,
         }
 
-    try:
-        item = resolve_media_item(title, media_type, year)
-    except TitleResolutionError:
-        return {
-            "error": f"I couldn't match '{title}' to a TMDB title. Please provide the exact title and year"
-        }
-
-    return {
-        "resolved_title": item.model_dump(),
-        "error": None,
-    }
+    return _resolve_title_candidates(title, media_type, year)
 
 
 def save_feedback(state: GraphState):
@@ -387,8 +412,8 @@ def save_preferences(state):
 
 
 def ask_clarifying_question(state: GraphState):
-    question = state["clarification_question"]
-    candidates = state.get("clarification_candidates", [])
+    question = state.get("clarification_question") or "Could you clarify what you meant?"
+    candidates = state.get("clarification_candidates") or []
 
     if candidates:
         choices = "\n".join(
@@ -399,12 +424,19 @@ def ask_clarifying_question(state: GraphState):
 
     answer = interrupt(question)
 
-    return {"clasification_answer": str(answer)}
+    return {
+        "clarification_answer": str(answer),
+        "messages": [
+            AIMessage(content=question),
+            HumanMessage(content=str(answer)),
+        ],
+    }
 
 
 def resolve_classification(state):
-    answer = state.get("clarification_answer", "").strip()
-    candidates = state.get("clasification_candidates", [])
+    raw_answer = state.get("clarification_answer")
+    answer = str(raw_answer).strip() if raw_answer is not None else ""
+    candidates = state.get("clarification_candidates") or []
 
     if not answer:
         return {"error": "I didn't receive a title choice. Please try again."}
@@ -420,6 +452,14 @@ def resolve_classification(state):
                 "error": None,
             }
 
+    feedback = state.get("feedback") or {}
+    media_type_answer = answer.casefold()
+
+    if media_type_answer in {"movie", "tv"}:
+        title = feedback.get("title")
+        if title:
+            return _resolve_title_candidates(title, media_type_answer, feedback.get("year"))
+
     matches = [item for item in candidates if answer.casefold() == item["title"].casefold()]
 
     if len(matches) == 1:
@@ -430,14 +470,11 @@ def resolve_classification(state):
         }
 
     return {
-        "messages": [
-            AIMessage(
-                content=(
-                    "I couldn't match that answer to one of the options. "
-                    "Please choose an option by number or give the exact title."
-                )
-            )
-        ],
+        "clarification_question": (
+            "I couldn't match that answer to one of the options. "
+            "Please choose an option by number or give the exact title."
+        ),
+        "clarification_candidates": candidates,
         "needs_clarification": True,
         "error": None,
     }

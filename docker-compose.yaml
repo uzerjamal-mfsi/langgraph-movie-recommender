@@ -8,6 +8,9 @@ services:
       - .env
     environment:
       DATA_DIR: /app/data
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      - qdrant
     volumes:
       - ./data:/app/data
 
