@@ -72,12 +72,15 @@ class TitleResolutionError(Exception):
 
 class TMDBClient:
     def __init__(self):
-        token = get_settings().tmdb_api_key.strip()
+        settings = get_settings()
+        token = (settings.tmdb_access_token or settings.tmdb_api_key or "").strip()
         if not token:
-            raise TMDBError("TMDB_API_KEY is not configured.")
+            raise TMDBError("TMDB_ACCESS_TOKEN is not configured.")
 
-        headers = {"Accept": "application/json"}
-        self._auth_params = {"api_key": token}
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
 
         self._session = requests.Session()
         self._session.headers.update(headers)
@@ -151,7 +154,6 @@ class TMDBClient:
 
     def _request(self, path, params=None):
         request_params = dict(params or {})
-        request_params.update(self._auth_params)
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
@@ -175,7 +177,7 @@ class TMDBClient:
 
             status_code = response.status_code
             if status_code in (401, 403):
-                raise TMDBError("TMDB authentication failed. Verify TMDB_API_KEY.")
+                raise TMDBError("TMDB authentication failed. Verify TMDB_ACCESS_TOKEN.")
             if status_code == 404:
                 raise TMDBError("TMDB could not find the requested title.")
             if status_code == 429 or status_code >= 500:

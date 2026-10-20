@@ -16,7 +16,8 @@ class Settings(BaseSettings):
 
     openrouter_api_key: str
     openrouter_model: str
-    tmdb_api_key: str
+    tmdb_access_token: str | None = None
+    tmdb_api_key: str | None = None
     log_level: str = "INFO"
 
     data_dir: Path = DEFAULT_DATA_DIR
@@ -34,6 +35,12 @@ class Settings(BaseSettings):
             self.library_db_path = self.data_dir / "library.db"
         if self.checkpoint_db_path is None:
             self.checkpoint_db_path = self.data_dir / "checkpoints.db"
+        return self
+
+    @model_validator(mode="after")
+    def require_tmdb_credentials(self):
+        if not (self.tmdb_access_token or self.tmdb_api_key):
+            raise ValueError("TMDB_ACCESS_TOKEN or TMDB_API_KEY must be set.")
         return self
 
 

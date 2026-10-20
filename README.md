@@ -7,7 +7,7 @@ A conversational movie and TV recommender built with LangGraph, OpenRouter, TMDB
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 - An OpenRouter API key
-- A TMDB API key
+- A TMDB API Read Access Token
 
 ## Setup
 
