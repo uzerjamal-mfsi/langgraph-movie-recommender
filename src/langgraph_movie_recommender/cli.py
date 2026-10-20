@@ -2,8 +2,8 @@ import logging
 import uuid
 
 from langchain_core.messages import HumanMessage
-from langchain_protocol import Command
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import Command
 
 from langgraph_movie_recommender.config import get_settings
 from langgraph_movie_recommender.db.session import init_db
