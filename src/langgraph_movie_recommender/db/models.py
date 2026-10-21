@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy import CheckConstraint, DateTime, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -16,6 +16,12 @@ class LibraryItemRecord(Base):
             "media_type",
             "tmdb_id",
             name="uq_library_profile_media_tmdb",
+        ),
+        CheckConstraint("media_type IN ('movie', 'tv')", name="ck_library_media_type"),
+        CheckConstraint("tmdb_id > 0", name="ck_library_tmdb_id"),
+        CheckConstraint(
+            "rating IS NULL OR (rating BETWEEN 1 AND 10)",
+            name="ck_library_rating",
         ),
     )
 
@@ -39,6 +45,18 @@ class PreferenceRecord(Base):
             "text",
             "kind",
             name="uq_preference_profile_text_kind",
+        ),
+        CheckConstraint(
+            "kind IN ('like', 'dislike', 'neutral')",
+            name="ck_preference_kind",
+        ),
+        CheckConstraint(
+            "source IN ('explicit', 'inferred')",
+            name="ck_preference_source",
+        ),
+        CheckConstraint(
+            "source_media_type IS NULL OR source_media_type IN ('movie', 'tv')",
+            name="ck_preference_source_media_type",
         ),
     )
 

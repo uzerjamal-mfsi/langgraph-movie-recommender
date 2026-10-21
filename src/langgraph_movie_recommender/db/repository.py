@@ -1,4 +1,5 @@
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from langgraph_movie_recommender.db.models import (
     LibraryItemRecord,
@@ -78,6 +79,30 @@ def find_library_item(profile_id, media_type, tmdb_id):
 def save_library_item(profile_id, item):
     with get_session() as session:
         with session.begin():
+            stmt = sqlite_insert(LibraryItemRecord).values(
+                profile_id=profile_id,
+                media_type=item.media_type,
+                tmdb_id=item.tmdb_id,
+                title=item.title,
+                year=item.year,
+                watched=item.watched,
+                rating=item.rating,
+                review=item.review,
+                updated_at=utc_now(),
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["profile_id", "media_type", "tmdb_id"],
+                set_={
+                    "title": stmt.excluded.title,
+                    "year": stmt.excluded.year,
+                    "watched": stmt.excluded.watched,
+                    "rating": stmt.excluded.rating,
+                    "review": stmt.excluded.review,
+                    "updated_at": stmt.excluded.updated_at,
+                },
+            )
+            session.execute(stmt)
+
             record = session.scalar(
                 select(LibraryItemRecord).where(
                     LibraryItemRecord.profile_id == profile_id,
@@ -86,61 +111,56 @@ def save_library_item(profile_id, item):
                 )
             )
 
-            if record is None:
-                record = LibraryItemRecord(
-                    profile_id=profile_id,
-                    media_type=item.media_type,
-                    tmdb_id=item.tmdb_id,
-                )
-                session.add(record)
-
-            record.title = item.title
-            record.year = item.year
-            record.watched = item.watched
-            record.rating = item.rating
-            record.review = item.review
-            record.updated_at = utc_now()
-
         return _library_item(record)
 
 
 def save_preference(profile_id, preference):
+    kind = str(getattr(preference.kind, "value", preference.kind))
+    source = str(getattr(preference.source, "value", preference.source))
+    source_media_type = getattr(preference.source_media_type, "value", None)
+    if source_media_type is None:
+        source_media_type = preference.source_media_type
+
     with get_session() as session:
         with session.begin():
-            record = session.get(PreferenceRecord, preference.id)
+            stmt = sqlite_insert(PreferenceRecord).values(
+                id=preference.id,
+                profile_id=profile_id,
+                text=preference.text,
+                kind=kind,
+                source=source,
+                source_title=preference.source_title,
+                source_media_type=source_media_type,
+                source_tmdb_id=preference.source_tmdb_id,
+                updated_at=utc_now(),
+            )
+            update_values = {
+                "text": stmt.excluded.text,
+                "kind": stmt.excluded.kind,
+                "source": stmt.excluded.source,
+                "source_title": stmt.excluded.source_title,
+                "source_media_type": stmt.excluded.source_media_type,
+                "source_tmdb_id": stmt.excluded.source_tmdb_id,
+                "updated_at": stmt.excluded.updated_at,
+            }
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["id"],
+                set_=update_values,
+                where=PreferenceRecord.profile_id == profile_id,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["profile_id", "text", "kind"],
+                set_=update_values,
+            )
+            session.execute(stmt)
 
-            if record is not None and record.profile_id != profile_id:
-                record = None
-
-            if record is None:
-                record = session.scalar(
-                    select(PreferenceRecord).where(
-                        PreferenceRecord.profile_id == profile_id,
-                        PreferenceRecord.text == preference.text,
-                        PreferenceRecord.kind
-                        == str(getattr(preference.kind, "value", preference.kind)),
-                    )
+            record = session.scalar(
+                select(PreferenceRecord).where(
+                    PreferenceRecord.profile_id == profile_id,
+                    PreferenceRecord.text == preference.text,
+                    PreferenceRecord.kind == kind,
                 )
-
-            kind = str(getattr(preference.kind, "value", preference.kind))
-
-            if record is None:
-                record = PreferenceRecord(
-                    id=preference.id,
-                    profile_id=profile_id,
-                    text=preference.text,
-                    kind=kind,
-                    updated_at=utc_now(),
-                )
-                session.add(record)
-
-            record.text = preference.text
-            record.kind = kind
-            record.source = preference.source
-            record.source_title = preference.source_title
-            record.source_media_type = preference.source_media_type
-            record.source_tmdb_id = preference.source_tmdb_id
-            record.updated_at = utc_now()
+            )
 
         return _preference(record)
 
