@@ -39,6 +39,7 @@ def _get_embeddings():
     )
 
 
+@lru_cache
 def get_vector_store():
     return QdrantVectorStore(
         client=_get_client(),
