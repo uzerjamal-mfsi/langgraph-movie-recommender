@@ -12,10 +12,9 @@ class LibraryItemRecord(Base):
     __tablename__ = "library_items"
     __table_args__ = (
         UniqueConstraint(
-            "profile_id",
             "media_type",
             "tmdb_id",
-            name="uq_library_profile_media_tmdb",
+            name="uq_library_media_tmdb",
         ),
         CheckConstraint("media_type IN ('movie', 'tv')", name="ck_library_media_type"),
         CheckConstraint("tmdb_id > 0", name="ck_library_tmdb_id"),
@@ -26,7 +25,6 @@ class LibraryItemRecord(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    profile_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     media_type: Mapped[str] = mapped_column(String, nullable=False)
     tmdb_id: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
@@ -41,10 +39,9 @@ class PreferenceRecord(Base):
     __tablename__ = "preferences"
     __table_args__ = (
         UniqueConstraint(
-            "profile_id",
             "text",
             "kind",
-            name="uq_preference_profile_text_kind",
+            name="uq_preference_text_kind",
         ),
         CheckConstraint(
             "kind IN ('like', 'dislike', 'neutral')",
@@ -61,7 +58,6 @@ class PreferenceRecord(Base):
     )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    profile_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(String, nullable=False)
     source: Mapped[str] = mapped_column(String, default="explicit", nullable=False)

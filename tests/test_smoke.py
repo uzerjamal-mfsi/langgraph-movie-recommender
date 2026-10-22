@@ -20,10 +20,20 @@ APP_MODULES = [
     "langgraph_movie_recommender.db.session",
     "langgraph_movie_recommender.graph.llm",
     "langgraph_movie_recommender.graph.nodes",
+    "langgraph_movie_recommender.graph.nodes.classification",
+    "langgraph_movie_recommender.graph.nodes.common",
+    "langgraph_movie_recommender.graph.nodes.feedback",
+    "langgraph_movie_recommender.graph.nodes.preferences",
+    "langgraph_movie_recommender.graph.nodes.recommender",
+    "langgraph_movie_recommender.graph.nodes.routing",
+    "langgraph_movie_recommender.graph.nodes.taste",
+    "langgraph_movie_recommender.graph.nodes.titles",
     "langgraph_movie_recommender.graph.prompts",
+    "langgraph_movie_recommender.graph.recommendations",
     "langgraph_movie_recommender.graph.schemas",
     "langgraph_movie_recommender.graph.state",
     "langgraph_movie_recommender.graph.workflow",
+    "langgraph_movie_recommender.memory.vector_store",
 ]
 
 REQUIRED_ENV_VARS = {

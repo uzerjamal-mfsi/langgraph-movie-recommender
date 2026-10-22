@@ -51,7 +51,7 @@ def make_item():
 
 def test_classify_intent_success(monkeypatch):
     expected = IntentClassification(intent="recommend", filters={"genres": ["Action"]})
-    monkeypatch.setattr(nodes, "get_chat_model", lambda: FakeStructuredLLM(expected))
+    monkeypatch.setattr(nodes.classification, "get_chat_model", lambda: FakeStructuredLLM(expected))
 
     result = nodes.classify_intent({"messages": [HumanMessage(content="action movies")]}, {})
 
@@ -62,7 +62,7 @@ def test_classify_intent_failure(monkeypatch):
     def raise_error():
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(nodes, "get_chat_model", raise_error)
+    monkeypatch.setattr(nodes.classification, "get_chat_model", raise_error)
 
     result = nodes.classify_intent({"messages": [HumanMessage(content="hi")]}, {})
 
@@ -81,7 +81,7 @@ def test_route_intent_failure_returns_error_route():
 
 def test_answer_general_success(monkeypatch):
     monkeypatch.setattr(
-        nodes, "get_chat_model", lambda: FakeLLM(message=AIMessage(content="hello"))
+        nodes.classification, "get_chat_model", lambda: FakeLLM(message=AIMessage(content="hello"))
     )
 
     result = nodes.answer_general({"messages": [HumanMessage(content="hi")]})
@@ -92,18 +92,22 @@ def test_answer_general_success(monkeypatch):
 
 def test_answer_general_failure(monkeypatch):
     monkeypatch.setattr(
-        nodes, "get_chat_model", lambda: FakeLLM(error=RuntimeError("model unavailable"))
+        nodes.classification,
+        "get_chat_model",
+        lambda: FakeLLM(error=RuntimeError("model unavailable")),
     )
 
     result = nodes.answer_general({"messages": [HumanMessage(content="hi")]})
 
     assert result["messages"][0].content == "Something went wrong please try again."
-    assert result["error"] is None
+    assert result["error"] == "Something went wrong please try again."
 
 
 def test_recommend_success(monkeypatch):
-    monkeypatch.setattr(nodes, "find_candidates", lambda filters: [make_item()])
-    monkeypatch.setattr(nodes, "format_recommendations", lambda items: "Here are titles")
+    monkeypatch.setattr(nodes.recommender, "find_candidates", lambda filters: [make_item()])
+    monkeypatch.setattr(
+        nodes.recommender, "format_recommendations", lambda items: "Here are titles"
+    )
 
     result = nodes.recommend({"filters": {}})
 
@@ -115,12 +119,12 @@ def test_recommend_failure(monkeypatch):
     def raise_tmdb_error(filters):
         raise TMDBError("TMDB is down")
 
-    monkeypatch.setattr(nodes, "find_candidates", raise_tmdb_error)
+    monkeypatch.setattr(nodes.recommender, "find_candidates", raise_tmdb_error)
 
     result = nodes.recommend({"filters": None})
 
     assert result["messages"][0].content == "TMDB is down"
-    assert result["error"] is None
+    assert result["error"] == "TMDB is down"
 
 
 def make_library_item(**overrides):
@@ -169,7 +173,9 @@ def test_extract_preferences_success(monkeypatch):
     extraction = PreferenceExtraction(
         preferences=[PreferenceStatement(text="likes sci-fi", kind="like")]
     )
-    monkeypatch.setattr(nodes, "get_chat_model", lambda: FakeStructuredLLM(extraction))
+    monkeypatch.setattr(
+        nodes.classification, "get_chat_model", lambda: FakeStructuredLLM(extraction)
+    )
 
     result = nodes.extract_preferences({"messages": [HumanMessage(content="I like sci-fi")]})
 
@@ -185,8 +191,12 @@ def test_extract_preferences_failure():
 
 
 def test_save_preferences_success(monkeypatch):
-    monkeypatch.setattr(nodes, "save_preference", lambda profile, preference: preference)
-    monkeypatch.setattr(nodes, "get_preferences", lambda profile: [])
+    monkeypatch.setattr(
+        nodes.preferences,
+        "persist_preferences",
+        lambda preferences: preferences,
+    )
+    monkeypatch.setattr(nodes.preferences, "index_preference", lambda preference: True)
 
     result = nodes.save_preferences(
         {"extracted_preferences": [{"text": "likes sci-fi", "kind": "like"}]}
@@ -203,7 +213,7 @@ def test_save_preferences_failure():
 
 
 def test_ask_clarifying_question_success(monkeypatch):
-    monkeypatch.setattr(nodes, "interrupt", lambda question: "2")
+    monkeypatch.setattr(nodes.titles, "interrupt", lambda question: "2")
 
     result = nodes.ask_clarifying_question({"clarification_question": "Which one?"})
 
@@ -215,7 +225,7 @@ def test_ask_clarifying_question_failure(monkeypatch):
     def raise_error(question):
         raise RuntimeError("interrupted")
 
-    monkeypatch.setattr(nodes, "interrupt", raise_error)
+    monkeypatch.setattr(nodes.titles, "interrupt", raise_error)
 
     with pytest.raises(RuntimeError):
         nodes.ask_clarifying_question({"clarification_question": "Which one?"})
@@ -240,36 +250,36 @@ def test_resolve_classification_failure():
 
 
 def test_load_taste_success(monkeypatch):
-    monkeypatch.setattr(nodes, "get_library", lambda profile: [make_library_item()])
+    monkeypatch.setattr(nodes.taste, "get_library", lambda: [make_library_item()])
     monkeypatch.setattr(
-        nodes,
+        nodes.taste,
         "get_preferences",
-        lambda profile: [
+        lambda: [
             Preference(id="p1", text="likes sci-fi", kind="like"),
             Preference(id="p2", text="dislikes horror", kind="dislike"),
         ],
     )
-    monkeypatch.setattr(nodes, "get_watched_ids", lambda profile: {("movie", 1)})
+    monkeypatch.setattr(nodes.taste, "get_watched_ids", lambda: {("movie", 1)})
 
     result = nodes.load_taste({})
 
     assert result["taste_likes"] == ["likes sci-fi"]
     assert result["taste_dislikes"] == ["dislikes horror"]
-    assert result["watched_ids"] == {("movie", 1)}
+    assert result["watched_ids"] == ["movie:1"]
 
 
 def test_load_taste_failure(monkeypatch):
-    def raise_error(profile):
+    def raise_error():
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(nodes, "get_library", raise_error)
+    monkeypatch.setattr(nodes.taste, "get_library", raise_error)
 
     result = nodes.load_taste({})
 
     assert result["taste_context"] == ""
     assert result["taste_likes"] == []
     assert result["taste_dislikes"] == []
-    assert result["watched_ids"] == set()
+    assert result["watched_ids"] == []
 
 
 def test_retrieve_taste_memories_success(monkeypatch):
@@ -277,7 +287,7 @@ def test_retrieve_taste_memories_success(monkeypatch):
         page_content="like: likes sci-fi",
         metadata={"preference_text": "likes sci-fi", "preference_kind": "like"},
     )
-    monkeypatch.setattr(nodes, "search_relevant_taste", lambda message, limit: [document])
+    monkeypatch.setattr(nodes.taste, "search_relevant_taste", lambda message, limit: [document])
 
     result = nodes.retrieve_taste_memories(
         {"messages": [HumanMessage(content="sci-fi")], "taste_likes": []}
@@ -291,7 +301,7 @@ def test_retrieve_taste_memories_failure(monkeypatch):
     def raise_error(message, limit):
         raise RuntimeError("qdrant down")
 
-    monkeypatch.setattr(nodes, "search_relevant_taste", raise_error)
+    monkeypatch.setattr(nodes.taste, "search_relevant_taste", raise_error)
 
     result = nodes.retrieve_taste_memories({"messages": [HumanMessage(content="sci-fi")]})
 

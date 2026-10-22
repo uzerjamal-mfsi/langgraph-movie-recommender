@@ -1,5 +1,6 @@
 import re
 
+from langgraph_movie_recommender.models import watched_id
 from langgraph_movie_recommender.tmdb import TMDBClient, genre_ids_from_names
 
 RESULT_LIMIT = 10
@@ -101,12 +102,13 @@ def format_recommendations(items):
 
 def filter_recommendations(items, filters, watched_ids):
     allow_rewatch = filters.get("allow_rewatch", False)
+    watched = set(watched_ids or [])
 
     return [
         item
         for item in items
         if _matches_constraints(item, filters)
-        and (allow_rewatch or (item.media_type, item.tmdb_id) not in watched_ids)
+        and (allow_rewatch or watched_id(item.media_type, item.tmdb_id) not in watched)
     ]
 
 

@@ -1,15 +1,23 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MediaType = Literal["movie", "tv"]
 PreferenceKind = Literal["like", "dislike", "neutral"]
 PreferenceSource = Literal["explicit", "inferred"]
 
 
+class DomainModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def watched_id(media_type: str, tmdb_id: int) -> str:
+    return f"{media_type}:{tmdb_id}"
 
 
 def _normalize_utc(value: datetime) -> datetime:
@@ -18,7 +26,7 @@ def _normalize_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-class MediaItem(BaseModel):
+class MediaItem(DomainModel):
     tmdb_id: int
     media_type: MediaType
     title: str
@@ -30,7 +38,7 @@ class MediaItem(BaseModel):
     tmdb_url: str
 
 
-class LibraryItem(BaseModel):
+class LibraryItem(DomainModel):
     media_type: MediaType
     tmdb_id: int = Field(gt=0)
     title: str = Field(min_length=1)
@@ -54,7 +62,7 @@ class LibraryItem(BaseModel):
         return _normalize_utc(value)
 
 
-class Preference(BaseModel):
+class Preference(DomainModel):
     id: str = Field(min_length=1)
     text: str = Field(min_length=1)
     kind: PreferenceKind

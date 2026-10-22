@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -40,108 +39,48 @@ def make_preference(**overrides):
     return Preference(**data)
 
 
-def library_record(**overrides):
-    data = {
-        "media_type": "movie",
-        "tmdb_id": 1,
-        "title": "Heat",
-        "year": 1995,
-        "watched": True,
-        "rating": 9,
-        "review": "Great",
-        "updated_at": datetime.now(UTC),
-    }
-    data.update(overrides)
-    return SimpleNamespace(**data)
-
-
-def preference_record(**overrides):
-    data = {
-        "id": "p1",
-        "text": "likes sci-fi",
-        "kind": "like",
-        "source": "explicit",
-        "source_title": None,
-        "source_media_type": None,
-        "source_tmdb_id": None,
-        "updated_at": datetime.now(UTC),
-    }
-    data.update(overrides)
-    return SimpleNamespace(**data)
-
-
-def test_library_item_success():
-    item = repository._library_item(library_record())
-
-    assert isinstance(item, LibraryItem)
-    assert item.title == "Heat"
-
-
-def test_library_item_failure():
-    record = library_record()
-    del record.title
-
-    with pytest.raises(AttributeError):
-        repository._library_item(record)
-
-
-def test_preference_success():
-    preference = repository._preference(preference_record())
-
-    assert isinstance(preference, Preference)
-    assert preference.text == "likes sci-fi"
-
-
-def test_preference_failure():
-    record = preference_record()
-    del record.id
-
-    with pytest.raises(AttributeError):
-        repository._preference(record)
-
-
 def test_get_library_success(session_factory):
-    repository.save_library_item("default", make_library_item(title="Zulu"))
-    repository.save_library_item("default", make_library_item(tmdb_id=2, title="Alien"))
+    repository.save_library_item(make_library_item(title="Zulu"))
+    repository.save_library_item(make_library_item(tmdb_id=2, title="Alien"))
 
     titles = [item.title for item in repository.get_library()]
 
     assert titles == ["Alien", "Zulu"]
 
 
-def test_get_library_unknown_profile_failure(session_factory):
-    assert repository.get_library("missing") == []
+def test_get_library_empty(session_factory):
+    assert repository.get_library() == []
 
 
 def test_get_preferences_success(session_factory):
-    repository.save_preference("default", make_preference(id="p2", text="zeta"))
-    repository.save_preference("default", make_preference(id="p1", text="alpha"))
+    repository.save_preference(make_preference(id="p2", text="zeta"))
+    repository.save_preference(make_preference(id="p1", text="alpha"))
 
     texts = [preference.text for preference in repository.get_preferences()]
 
     assert texts == ["alpha", "zeta"]
 
 
-def test_get_preferences_unknown_profile_failure(session_factory):
-    assert repository.get_preferences("missing") == []
+def test_get_preferences_empty(session_factory):
+    assert repository.get_preferences() == []
 
 
 def test_find_library_item_success(session_factory):
-    repository.save_library_item("default", make_library_item())
+    repository.save_library_item(make_library_item())
 
-    item = repository.find_library_item("default", "movie", 1)
+    item = repository.find_library_item("movie", 1)
 
     assert item is not None
     assert item.title == "Heat"
 
 
 def test_find_library_item_failure(session_factory):
-    assert repository.find_library_item("default", "movie", 999) is None
+    assert repository.find_library_item("movie", 999) is None
 
 
 def test_save_library_item_success(session_factory):
-    saved = repository.save_library_item("default", make_library_item())
-    updated = repository.save_library_item("default", make_library_item(rating=10))
+    saved = repository.save_library_item(make_library_item())
+    updated = repository.save_library_item(make_library_item(rating=10))
 
     assert saved.title == "Heat"
     assert updated.rating == 10
@@ -152,12 +91,12 @@ def test_save_library_item_failure(session_factory):
     invalid = SimpleNamespace(media_type="movie", tmdb_id=2)
 
     with pytest.raises(AttributeError):
-        repository.save_library_item("default", invalid)
+        repository.save_library_item(invalid)
 
 
 def test_save_preference_success(session_factory):
-    saved = repository.save_preference("default", make_preference())
-    updated = repository.save_preference("default", make_preference(text="loves sci-fi"))
+    saved = repository.save_preference(make_preference())
+    updated = repository.save_preference(make_preference(text="loves sci-fi"))
 
     assert saved.text == "likes sci-fi"
     assert updated.text == "loves sci-fi"
@@ -168,17 +107,39 @@ def test_save_preference_failure(session_factory):
     invalid = SimpleNamespace(id="p2")
 
     with pytest.raises(AttributeError):
-        repository.save_preference("default", invalid)
+        repository.save_preference(invalid)
+
+
+def test_save_preferences_saves_all_in_one_call(session_factory):
+    saved = repository.save_preferences(
+        [
+            make_preference(id="p1", text="likes sci-fi"),
+            make_preference(id="p2", text="dislikes horror", kind="dislike"),
+        ]
+    )
+
+    assert [preference.id for preference in saved] == ["p1", "p2"]
+    assert len(repository.get_preferences()) == 2
+
+
+def test_save_feedback_and_preferences_is_atomic(session_factory):
+    item = make_library_item()
+    preferences = [make_preference(id="p1", text="likes sci-fi")]
+
+    saved_item, saved_preferences = repository.save_feedback_and_preferences(item, preferences)
+
+    assert saved_item.title == "Heat"
+    assert saved_preferences[0].text == "likes sci-fi"
+    assert len(repository.get_library()) == 1
+    assert len(repository.get_preferences()) == 1
 
 
 def test_get_watched_ids_success(session_factory):
-    repository.save_library_item("default", make_library_item(watched=True))
-    repository.save_library_item(
-        "default", make_library_item(tmdb_id=2, title="Alien", watched=False)
-    )
+    repository.save_library_item(make_library_item(watched=True))
+    repository.save_library_item(make_library_item(tmdb_id=2, title="Alien", watched=False))
 
     assert repository.get_watched_ids() == {("movie", 1)}
 
 
-def test_get_watched_ids_unknown_profile_failure(session_factory):
-    assert repository.get_watched_ids("missing") == set()
+def test_get_watched_ids_empty(session_factory):
+    assert repository.get_watched_ids() == set()

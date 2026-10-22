@@ -55,37 +55,32 @@ def test_clarification_interrupts_and_resumes(monkeypatch):
         negative_aspects=[],
     )
     monkeypatch.setattr(
-        nodes,
+        nodes.classification,
         "get_chat_model",
         lambda: FakeWorkflowLLM(classification, feedback),
     )
     monkeypatch.setattr(
-        nodes,
+        nodes.titles,
         "find_media_candidates",
         lambda title, media_type, year: [make_item(1, 1995), make_item(2, 1986)],
     )
     monkeypatch.setattr(
-        nodes,
+        nodes.feedback,
         "find_library_item",
-        lambda profile_id, media_type, tmdb_id: None,
+        lambda media_type, tmdb_id: None,
     )
     saved = {}
 
-    def save_library_item(profile_id, item):
+    def save_feedback_and_preferences(item, preferences):
         saved["item"] = item
-        return item
+        return item, preferences
 
-    monkeypatch.setattr(nodes, "save_library_item", save_library_item)
     monkeypatch.setattr(
-        nodes,
-        "save_preference",
-        lambda profile_id, preference: preference,
+        nodes.feedback,
+        "save_feedback_and_preferences",
+        save_feedback_and_preferences,
     )
-    monkeypatch.setattr(
-        nodes,
-        "_index_saved_preference",
-        lambda profile_id, preference: True,
-    )
+    monkeypatch.setattr(nodes.feedback, "index_preference", lambda preference: True)
 
     workflow = build_workflow(checkpointer=MemorySaver())
     config = {"configurable": {"thread_id": "clarification-test"}}

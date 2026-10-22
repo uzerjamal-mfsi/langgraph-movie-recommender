@@ -1,9 +1,12 @@
 import argparse
 import logging
+import sys
 
 from langgraph_movie_recommender.cli import run_chat
 from langgraph_movie_recommender.db.session import init_db
 from langgraph_movie_recommender.memory import rebuild_preference_index
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -21,8 +24,18 @@ def main():
 
     if arguments.rebuild_index:
         logging.basicConfig(level=logging.INFO)
-        init_db()
-        count = rebuild_preference_index()
+
+        try:
+            init_db()
+            count = rebuild_preference_index()
+        except Exception:
+            logger.exception("Failed to rebuild the preference index")
+            print(
+                "Failed to rebuild the preference index. See logs for details.",
+                file=sys.stderr,
+            )
+            return 1
+
         print(f"Rebuilt preference index with {count} preferences.")
         return 0
 

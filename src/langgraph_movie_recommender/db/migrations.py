@@ -6,7 +6,7 @@ from langgraph_movie_recommender.db.models import Base
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _get_user_version(connection):
@@ -62,8 +62,27 @@ def _create_schema(connection):
         Base.metadata.create_all(connection)
 
 
+def _drop_profile_columns(connection):
+    inspector = inspect(connection)
+    existing_tables = set(inspector.get_table_names())
+    legacy_tables = []
+
+    for table_name in Base.metadata.tables:
+        if table_name not in existing_tables:
+            continue
+
+        columns = {column["name"] for column in inspector.get_columns(table_name)}
+
+        if "profile_id" in columns:
+            legacy_tables.append(table_name)
+
+    if legacy_tables:
+        _rebuild_legacy_tables(connection, sorted(legacy_tables))
+
+
 MIGRATIONS = {
     1: _create_schema,
+    2: _drop_profile_columns,
 }
 
 

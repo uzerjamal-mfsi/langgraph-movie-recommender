@@ -8,7 +8,7 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient, models
 
 from langgraph_movie_recommender.config import get_settings
-from langgraph_movie_recommender.db.repository import DEFAULT_PROFILE_ID, get_preferences
+from langgraph_movie_recommender.db.repository import get_preferences
 
 logger = logging.getLogger(__name__)
 
@@ -48,22 +48,15 @@ def get_vector_store():
     )
 
 
-def index_preference(preference, profile_id=DEFAULT_PROFILE_ID):
+def index_preference(preference):
     try:
-        kind = str(getattr(preference.kind, "value", preference.kind))
-        record_id = str(
-            uuid5(
-                NAMESPACE_URL,
-                f"{profile_id}:{preference.id}",
-            )
-        )
+        record_id = str(uuid5(NAMESPACE_URL, preference.id))
 
         document = Document(
-            page_content=f"{kind}: {preference.text}",
+            page_content=f"{preference.kind}: {preference.text}",
             metadata={
-                "profile_id": profile_id,
                 "source_record_id": preference.id,
-                "preference_kind": kind,
+                "preference_kind": preference.kind,
                 "preference_text": preference.text,
                 "source": preference.source,
                 "source_title": preference.source_title or "",
@@ -82,51 +75,38 @@ def index_preference(preference, profile_id=DEFAULT_PROFILE_ID):
         return False
 
 
-def search_relevant_taste(query, profile_id=DEFAULT_PROFILE_ID, limit=5):
+def search_relevant_taste(query, limit=5):
     if not query.strip() or limit < 1:
         return []
 
     try:
-        return get_vector_store().similarity_search(
-            query,
-            k=limit,
-            filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="profile_id",
-                        match=models.MatchValue(value=profile_id),
-                    )
-                ]
-            ),
-        )
+        return get_vector_store().similarity_search(query, k=limit)
     except Exception:
         logger.warning("Could not retrieve taste memories from Qdrant", exc_info=True)
         return []
 
 
 def rebuild_preference_index():
-    try:
-        client = _get_client()
-        collection = get_settings().qdrant_collection
+    client = _get_client()
+    collection = get_settings().qdrant_collection
 
+    if client.collection_exists(collection):
         client.delete_collection(collection)
-        client.create_collection(
-            collection_name=collection,
-            vectors_config=models.VectorParams(
-                size=get_settings().embedding_dimensions,
-                distance=models.Distance.COSINE,
-            ),
-        )
 
-        get_vector_store.cache_clear()
+    client.create_collection(
+        collection_name=collection,
+        vectors_config=models.VectorParams(
+            size=get_settings().embedding_dimensions,
+            distance=models.Distance.COSINE,
+        ),
+    )
 
-        count = 0
-        for preference in get_preferences(DEFAULT_PROFILE_ID):
-            if index_preference(preference):
-                count += 1
+    get_vector_store.cache_clear()
 
-        return count
+    count = 0
+    for preference in get_preferences():
+        if not index_preference(preference):
+            raise RuntimeError(f"Failed to index preference {preference.id} in Qdrant.")
+        count += 1
 
-    except Exception:
-        logger.warning("Could not rebuild the Qdrant preference index", exc_info=True)
-        return 0
+    return count
