@@ -84,4 +84,4 @@ def build_workflow(checkpointer=None):
     workflow.add_edge("extract_preferences", "save_preferences")
     workflow.add_edge("save_preferences", END)
 
-    return workflow.compile(checkpointer=checkpointer)
+    return workflow.compile(checkpointer=checkpointer, name="movie_recommender")

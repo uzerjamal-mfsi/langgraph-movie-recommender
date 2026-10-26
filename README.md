@@ -26,6 +26,7 @@ A conversational movie and TV recommender built with LangGraph, OpenRouter, TMDB
    On Windows PowerShell, use `Copy-Item .env.example .env`.
 
 3. Fill in the required values in `.env`
+4. (Optional) For LangSmith tracing, set `LANGSMITH_TRACING=true` and provide `LANGSMITH_API_KEY` in `.env`.
 
 ## Run the chat
 

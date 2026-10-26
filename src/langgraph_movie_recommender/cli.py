@@ -58,8 +58,13 @@ def run_chat(thread_id=None):
         exist_ok=True,
     )
     logging.basicConfig(level=settings.log_level)
+    if settings.langsmith_tracing:
+        logger.info("LangSmith tracing enabled")
     session_thread_id = resolve_thread_id(thread_id)
-    config = {"configurable": {"thread_id": session_thread_id}}
+    config = {
+        "configurable": {"thread_id": session_thread_id},
+        "run_name": "movie_recommender_chat",
+    }
     waiting_for_clarification = False
 
     with SqliteSaver.from_conn_string(str(settings.checkpoint_db_path)) as checkpointer:

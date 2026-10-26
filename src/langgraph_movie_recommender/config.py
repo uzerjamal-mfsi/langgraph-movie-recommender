@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -29,6 +30,9 @@ class Settings(BaseSettings):
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     embedding_dimensions: int = 384
 
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+
     @model_validator(mode="after")
     def apply_default_paths(self):
         if self.library_db_path is None:
@@ -41,6 +45,13 @@ class Settings(BaseSettings):
     def require_tmdb_credentials(self):
         if not (self.tmdb_access_token or self.tmdb_api_key):
             raise ValueError("TMDB_ACCESS_TOKEN or TMDB_API_KEY must be set.")
+        return self
+
+    @model_validator(mode="after")
+    def apply_langsmith_config(self):
+        if self.langsmith_tracing and self.langsmith_api_key:
+            os.environ["LANGSMITH_TRACING"] = "true"
+            os.environ["LANGSMITH_API_KEY"] = self.langsmith_api_key
         return self
 
 
