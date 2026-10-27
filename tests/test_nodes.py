@@ -8,7 +8,7 @@ from langgraph_movie_recommender.graph.schemas import (
     PreferenceExtraction,
     PreferenceStatement,
 )
-from langgraph_movie_recommender.models import LibraryItem, MediaItem, Preference
+from langgraph_movie_recommender.models import MediaItem, Preference
 from langgraph_movie_recommender.tmdb import TMDBError
 
 
@@ -127,33 +127,16 @@ def test_recommend_failure(monkeypatch):
     assert result["error"] == "TMDB is down"
 
 
-def make_library_item(**overrides):
-    data = {
-        "media_type": "movie",
-        "tmdb_id": 1,
-        "title": "Heat",
-        "year": 1995,
-        "watched": True,
-        "rating": 9,
-    }
-    data.update(overrides)
-    return LibraryItem(**data)
+def test_route_after_resolution_success():
+    assert nodes.route_after_resolution({"error": None}) == "save"
 
 
-def test_route_after_title_resolution_success():
-    assert nodes.route_after_title_resolution({"error": None}) == "save"
+def test_route_after_resolution_failure():
+    assert nodes.route_after_resolution({"error": "boom"}) == "error"
 
 
-def test_route_after_title_resolution_failure():
-    assert nodes.route_after_title_resolution({"error": "boom"}) == "error"
-
-
-def test_route_after_clarification_success():
-    assert nodes.route_after_clarification({"needs_clarification": False}) == "save"
-
-
-def test_route_after_clarification_failure():
-    assert nodes.route_after_clarification({"error": "boom"}) == "error"
+def test_route_after_resolution_clarify():
+    assert nodes.route_after_resolution({"needs_clarification": True}) == "clarify"
 
 
 def test_extract_feedback_failure():
@@ -250,7 +233,6 @@ def test_resolve_classification_failure():
 
 
 def test_load_taste_success(monkeypatch):
-    monkeypatch.setattr(nodes.taste, "get_library", lambda: [make_library_item()])
     monkeypatch.setattr(
         nodes.taste,
         "get_preferences",
@@ -272,11 +254,10 @@ def test_load_taste_failure(monkeypatch):
     def raise_error():
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(nodes.taste, "get_library", raise_error)
+    monkeypatch.setattr(nodes.taste, "get_preferences", raise_error)
 
     result = nodes.load_taste({})
 
-    assert result["taste_context"] == ""
     assert result["taste_likes"] == []
     assert result["taste_dislikes"] == []
     assert result["watched_ids"] == []
@@ -293,7 +274,6 @@ def test_retrieve_taste_memories_success(monkeypatch):
         {"messages": [HumanMessage(content="sci-fi")], "taste_likes": []}
     )
 
-    assert result["relevant_taste_memories"] == ["likes sci-fi"]
     assert result["taste_likes"] == ["likes sci-fi"]
 
 

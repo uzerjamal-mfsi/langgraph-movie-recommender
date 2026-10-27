@@ -57,7 +57,6 @@ def run_chat(thread_id=None):
         parents=True,
         exist_ok=True,
     )
-    logging.basicConfig(level=settings.log_level)
     if settings.langsmith_tracing:
         logger.info("LangSmith tracing enabled")
     session_thread_id = resolve_thread_id(thread_id)

@@ -88,9 +88,6 @@ def extract_feedback(state):
 
     feedback = result.model_dump()
 
-    if feedback["rating"] is not None and not 1 <= feedback["rating"] <= 10:
-        feedback["rating"] = None
-
     if not feedback["title"]:
         return failed("I couldn't identify a title", feedback=feedback)
 

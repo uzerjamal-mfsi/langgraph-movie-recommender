@@ -44,7 +44,7 @@ class PreferenceRecord(Base):
             name="uq_preference_text_kind",
         ),
         CheckConstraint(
-            "kind IN ('like', 'dislike', 'neutral')",
+            "kind IN ('like', 'dislike')",
             name="ck_preference_kind",
         ),
         CheckConstraint(

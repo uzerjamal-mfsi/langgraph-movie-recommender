@@ -66,10 +66,6 @@ class TMDBError(Exception):
     pass
 
 
-class TitleResolutionError(Exception):
-    pass
-
-
 class TMDBClient:
     def __init__(self):
         settings = get_settings()
@@ -305,17 +301,6 @@ def find_media_candidates(title, media_type, year, limit=None):
         matches = matches[:limit]
 
     return matches
-
-
-def resolve_media_item(title, media_type, year) -> MediaItem:
-    matches = find_media_candidates(title, media_type, year)
-
-    if not matches:
-        year_label = f" from {year}" if year is not None else ""
-        raise TitleResolutionError(
-            f"No TMDB {media_type} found matching '{title.strip()}'{year_label}."
-        )
-    return matches[0]
 
 
 def _title_key(title):

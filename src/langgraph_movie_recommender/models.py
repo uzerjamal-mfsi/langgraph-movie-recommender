@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MediaType = Literal["movie", "tv"]
-PreferenceKind = Literal["like", "dislike", "neutral"]
+PreferenceKind = Literal["like", "dislike"]
 PreferenceSource = Literal["explicit", "inferred"]
 
 

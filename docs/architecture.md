@@ -46,8 +46,7 @@ The fields are roughly:
 
 - `messages`, the conversation
 - `intent` and `filters`, from classification
-- `taste_context`, `taste_likes`, `taste_dislikes`, `watched_ids`
-- `relevant_taste_memories`, from Qdrant
+- `taste_likes`, `taste_dislikes`, `watched_ids`
 - `feedback`, `resolved_title`, `saved_summary`
 - `clarification_question`, `clarification_candidates`, `clarification_answer`, `needs_clarification`
 - `extracted_preferences`

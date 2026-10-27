@@ -1,7 +1,6 @@
 import logging
 
 from langgraph_movie_recommender.db.repository import (
-    get_library,
     get_preferences,
     get_watched_ids,
 )
@@ -14,41 +13,22 @@ logger = logging.getLogger(__name__)
 
 def load_taste(state):
     try:
-        library = get_library()
         preferences = get_preferences()
         watched_ids = [
             watched_id(media_type, tmdb_id) for media_type, tmdb_id in sorted(get_watched_ids())
         ]
 
-        ratings = [
-            f"{item.title}: {item.rating}/10" + (f" — {item.review}" if item.review else "")
-            for item in library
-            if item.watched and (item.rating is not None or item.review)
-        ]
         likes = [preference.text for preference in preferences if preference.kind == "like"]
         dislikes = [preference.text for preference in preferences if preference.kind == "dislike"]
     except Exception:
         logger.exception("load_taste: failed to load taste profile")
         return {
-            "taste_context": "",
             "taste_likes": [],
             "taste_dislikes": [],
             "watched_ids": [],
         }
 
-    context = []
-
-    if likes:
-        context.append("Likes: " + "; ".join(likes[:10]))
-
-    if dislikes:
-        context.append("Dislikes: " + "; ".join(dislikes[:10]))
-
-    if ratings:
-        context.append("Watched titles and feedback: " + "; ".join(ratings[:10]))
-
     return {
-        "taste_context": "\n".join(context),
         "taste_likes": likes,
         "taste_dislikes": dislikes,
         "watched_ids": watched_ids,
@@ -69,12 +49,10 @@ def retrieve_taste_memories(state):
 
     likes = list(state.get("taste_likes", []))
     dislikes = list(state.get("taste_dislikes", []))
-    relevant = []
 
     for memory in memories:
         text = memory.metadata.get("preference_text", memory.page_content)
         kind = memory.metadata.get("preference_kind")
-        relevant.append(text)
 
         if kind == "like" and text not in likes:
             likes.append(text)
@@ -84,5 +62,4 @@ def retrieve_taste_memories(state):
     return {
         "taste_likes": likes,
         "taste_dislikes": dislikes,
-        "relevant_taste_memories": relevant,
     }

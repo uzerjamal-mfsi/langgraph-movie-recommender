@@ -67,7 +67,12 @@ class FeedbackExtraction(BaseModel):
     watched: bool | None = Field(
         description="True if clearly watched, false if explicitly not watched, otherwise null."
     )
-    rating: int | None = Field(description="Explicit user rating on a 1-10 scale, or null.")
+    rating: int | None = Field(
+        default=None,
+        ge=1,
+        le=10,
+        description="Explicit user rating on a 1-10 scale, or null.",
+    )
     review: str | None = Field(
         description="The user's overall opinion or review, preserving their meaning."
     )

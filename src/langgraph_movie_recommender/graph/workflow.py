@@ -11,8 +11,7 @@ from langgraph_movie_recommender.graph.nodes import (
     resolve_classification,
     resolve_title,
     retrieve_taste_memories,
-    route_after_clarification,
-    route_after_title_resolution,
+    route_after_resolution,
     route_intent,
     save_feedback,
     save_preferences,
@@ -59,7 +58,7 @@ def build_workflow(checkpointer=None):
     workflow.add_edge("extract_feedback", "resolve_title")
     workflow.add_conditional_edges(
         "resolve_title",
-        route_after_title_resolution,
+        route_after_resolution,
         {
             "clarify": "ask_clarifying_question",
             "save": "save_feedback",
@@ -72,7 +71,7 @@ def build_workflow(checkpointer=None):
     )
     workflow.add_conditional_edges(
         "resolve_clarification",
-        route_after_clarification,
+        route_after_resolution,
         {
             "clarify": "ask_clarifying_question",
             "save": "save_feedback",
