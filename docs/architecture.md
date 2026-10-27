@@ -1,6 +1,6 @@
 # Architecture
 
-It's a chat loop. The CLI reads a line, sends it to a LangGraph state graph, and prints the last assistant message that comes back. The graph classifies what the user is trying to do, runs one branch, and stops. There are no slash commands and no background work.
+It's a chat loop. The CLI reads a line, sends it to a LangGraph state graph, and prints the assistant reply. Tokens from `answer_general` are streamed as they arrive; replies built from templates are printed when the graph finishes. The graph classifies what the user is trying to do, runs one branch, and stops. There are no slash commands and no background work.
 
 Each conversation is a thread. The compiled graph is given a SQLite checkpointer, so the state is saved after every step. That is how `--thread-id` can resume an old conversation.
 
@@ -17,12 +17,12 @@ The five intents are `recommend`, `title_question`, `general`, `record_feedback`
 Three nodes:
 
 1. `load_taste` reads preferences, watched titles and ratings from SQLite. It builds a small text summary and fills `taste_likes`, `taste_dislikes` and `watched_ids`.
-2. `retrieve_taste_memories` does a Qdrant similarity search with the current user message (top 5) and merges anything relevant into the like/dislike lists. If Qdrant is unreachable it just returns nothing, the rest of the graph keeps going.
+2. `retrieve_taste_memories` does a Qdrant similarity search with the current user message (top 5) and merges anything relevant into the like/dislike lists. The collection dimension is detected from `EMBEDDING_MODEL` and validated against the collection. If Qdrant is unreachable it just returns nothing, the rest of the graph keeps going.
 3. `recommend` asks TMDB for candidates (search when there is a query, discover otherwise), drops titles already watched unless rewatch is allowed, re ranks by word overlap with the taste lists, and formats the top 5.
 
 ### answer_general
 
-Both `title_question` and `general` end up here. It's a plain LLM call over the message history.
+Both `title_question` and `general` end up here. It's a plain LLM call with a system prompt (`GENERAL_ASSISTANT_PROMPT`) over the message history.
 
 ### record_feedback
 

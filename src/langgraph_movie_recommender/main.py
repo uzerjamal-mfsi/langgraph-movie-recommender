@@ -3,7 +3,9 @@ import logging
 import sys
 
 from langgraph_movie_recommender.cli import run_chat
+from langgraph_movie_recommender.config import get_settings
 from langgraph_movie_recommender.db.session import init_db
+from langgraph_movie_recommender.log_config import configure_logging
 from langgraph_movie_recommender.memory import rebuild_preference_index
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,7 @@ def main():
     arguments = parser.parse_args()
 
     if arguments.rebuild_index:
-        logging.basicConfig(level=logging.INFO)
+        configure_logging(get_settings().log_level)
 
         try:
             init_db()

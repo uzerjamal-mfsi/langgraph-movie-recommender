@@ -13,21 +13,17 @@ from langgraph_movie_recommender.db.repository import get_preferences
 logger = logging.getLogger(__name__)
 
 
-@lru_cache
-def _get_client():
-    settings = get_settings()
-    client = QdrantClient(url=settings.qdrant_url)
+def _probe_embedding_dimensions(embeddings):
+    """Return the vector size produced by an embeddings implementation."""
+    client = getattr(embeddings, "_client", None)
+    getter = getattr(client, "get_sentence_embedding_dimension", None)
 
-    if not client.collection_exists(settings.qdrant_collection):
-        client.create_collection(
-            collection_name=settings.qdrant_collection,
-            vectors_config=models.VectorParams(
-                size=settings.embedding_dimensions,
-                distance=models.Distance.COSINE,
-            ),
-        )
+    if callable(getter):
+        dimensions = getter()
+        if isinstance(dimensions, int) and dimensions > 0:
+            return dimensions
 
-    return client
+    return len(embeddings.embed_query("dimension probe"))
 
 
 @lru_cache
@@ -37,6 +33,70 @@ def _get_embeddings():
         model_kwargs={"device": "cpu"},
         encode_kwargs={"normalize_embeddings": True},
     )
+
+
+@lru_cache
+def _resolve_embedding_dimensions():
+    settings = get_settings()
+    dimensions = _probe_embedding_dimensions(_get_embeddings())
+    configured = settings.embedding_dimensions
+
+    if configured is not None and configured != dimensions:
+        raise ValueError(
+            f"EMBEDDING_DIMENSIONS={configured} does not match model "
+            f"'{settings.embedding_model}', which produces {dimensions}-dimensional vectors. "
+            "Unset EMBEDDING_DIMENSIONS to auto-detect it, or set it to the model's dimension."
+        )
+
+    return dimensions
+
+
+def _collection_vector_size(client, collection_name):
+    info = client.get_collection(collection_name)
+    vectors = info.config.params.vectors
+
+    if isinstance(vectors, dict):
+        vectors = next(iter(vectors.values()), None)
+
+    return getattr(vectors, "size", None)
+
+
+def _ensure_collection(client, settings):
+    exists = client.collection_exists(settings.qdrant_collection)
+    dimensions = _resolve_embedding_dimensions()
+
+    if not exists:
+        client.create_collection(
+            collection_name=settings.qdrant_collection,
+            vectors_config=models.VectorParams(
+                size=dimensions,
+                distance=models.Distance.COSINE,
+            ),
+        )
+        logger.info(
+            "Created Qdrant collection %s with %d dimensions",
+            settings.qdrant_collection,
+            dimensions,
+        )
+        return
+
+    stored_dimensions = _collection_vector_size(client, settings.qdrant_collection)
+
+    if stored_dimensions is not None and stored_dimensions != dimensions:
+        raise ValueError(
+            f"Qdrant collection '{settings.qdrant_collection}' stores {stored_dimensions}-"
+            f"dimensional vectors, but model '{settings.embedding_model}' produces "
+            f"{dimensions}. Align EMBEDDING_MODEL/EMBEDDING_DIMENSIONS and rebuild the "
+            "index with 'movie-recommender --rebuild-index'."
+        )
+
+
+@lru_cache
+def _get_client():
+    settings = get_settings()
+    client = QdrantClient(url=settings.qdrant_url)
+    _ensure_collection(client, settings)
+    return client
 
 
 @lru_cache
@@ -87,20 +147,26 @@ def search_relevant_taste(query, limit=5):
 
 
 def rebuild_preference_index():
-    client = _get_client()
-    collection = get_settings().qdrant_collection
+    settings = get_settings()
+    collection = settings.qdrant_collection
+    dimensions = _resolve_embedding_dimensions()
+    client = QdrantClient(url=settings.qdrant_url)
 
-    if client.collection_exists(collection):
-        client.delete_collection(collection)
+    try:
+        if client.collection_exists(collection):
+            client.delete_collection(collection)
 
-    client.create_collection(
-        collection_name=collection,
-        vectors_config=models.VectorParams(
-            size=get_settings().embedding_dimensions,
-            distance=models.Distance.COSINE,
-        ),
-    )
+        client.create_collection(
+            collection_name=collection,
+            vectors_config=models.VectorParams(
+                size=dimensions,
+                distance=models.Distance.COSINE,
+            ),
+        )
+    finally:
+        client.close()
 
+    _get_client.cache_clear()
     get_vector_store.cache_clear()
 
     count = 0

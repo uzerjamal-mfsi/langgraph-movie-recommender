@@ -1,8 +1,10 @@
 import pytest
 from langchain_core.documents import Document
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from langgraph_movie_recommender.graph import nodes
+from langgraph_movie_recommender.graph.nodes.common import INTENT_ERROR, PREFERENCE_EXTRACTION_ERROR
+from langgraph_movie_recommender.graph.prompts import GENERAL_ASSISTANT_PROMPT
 from langgraph_movie_recommender.graph.schemas import (
     IntentClassification,
     PreferenceExtraction,
@@ -32,11 +34,32 @@ class FakeLLM:
     def __init__(self, message=None, error=None):
         self.message = message
         self.error = error
+        self.messages = None
 
     def invoke(self, messages):
+        self.messages = messages
         if self.error is not None:
             raise self.error
         return self.message
+
+
+class FailingStructuredLLM:
+    """Structured output fails; plain invoke returns raw JSON for the fallback."""
+
+    def __init__(self, content):
+        self.content = content
+        self.invoke_calls = 0
+
+    def with_structured_output(self, schema):
+        class FailingParser:
+            def invoke(self, messages):
+                raise ValueError("structured output is not supported")
+
+        return FailingParser()
+
+    def invoke(self, messages):
+        self.invoke_calls += 1
+        return AIMessage(content=self.content)
 
 
 def make_item():
@@ -70,6 +93,31 @@ def test_classify_intent_failure(monkeypatch):
     assert isinstance(result["messages"][0], AIMessage)
 
 
+def test_classify_intent_falls_back_to_json(monkeypatch):
+    llm = FailingStructuredLLM(
+        '```json\n{"intent": "recommend", "filters": {"genres": ["Action"]}}\n```'
+    )
+    monkeypatch.setattr(nodes.classification, "get_chat_model", lambda: llm)
+
+    result = nodes.classify_intent({"messages": [HumanMessage(content="action movies")]}, {})
+
+    assert result == {"intent": "recommend", "filters": {"genres": ["Action"]}, "error": None}
+    assert llm.invoke_calls == 1
+
+
+def test_classify_intent_returns_error_when_fallback_is_invalid(monkeypatch):
+    monkeypatch.setattr(
+        nodes.classification,
+        "get_chat_model",
+        lambda: FailingStructuredLLM("not json"),
+    )
+
+    result = nodes.classify_intent({"messages": [HumanMessage(content="hi")]}, {})
+
+    assert result["error"] == INTENT_ERROR
+    assert isinstance(result["messages"][0], AIMessage)
+
+
 def test_route_intent_success():
     assert nodes.route_intent({"intent": "recommend"}) == "recommend"
     assert nodes.route_intent({}) == "general"
@@ -80,14 +128,16 @@ def test_route_intent_failure_returns_error_route():
 
 
 def test_answer_general_success(monkeypatch):
-    monkeypatch.setattr(
-        nodes.classification, "get_chat_model", lambda: FakeLLM(message=AIMessage(content="hello"))
-    )
+    llm = FakeLLM(message=AIMessage(content="hello"))
+    monkeypatch.setattr(nodes.classification, "get_chat_model", lambda: llm)
 
     result = nodes.answer_general({"messages": [HumanMessage(content="hi")]})
 
     assert result["messages"][0].content == "hello"
     assert result["error"] is None
+    assert isinstance(llm.messages[0], SystemMessage)
+    assert llm.messages[0].content == GENERAL_ASSISTANT_PROMPT
+    assert llm.messages[1].content == "hi"
 
 
 def test_answer_general_failure(monkeypatch):
@@ -166,11 +216,34 @@ def test_extract_preferences_success(monkeypatch):
     assert result["error"] is None
 
 
+def test_extract_preferences_falls_back_to_json(monkeypatch):
+    llm = FailingStructuredLLM('{"preferences": [{"text": "likes sci-fi", "kind": "like"}]}')
+    monkeypatch.setattr(nodes.classification, "get_chat_model", lambda: llm)
+
+    result = nodes.extract_preferences({"messages": [HumanMessage(content="I like sci-fi")]})
+
+    assert result["extracted_preferences"] == [{"text": "likes sci-fi", "kind": "like"}]
+    assert result["error"] is None
+
+
 def test_extract_preferences_failure():
     result = nodes.extract_preferences({"messages": []})
 
     assert result["extracted_preferences"] == []
     assert result["error"] is not None
+
+
+def test_extract_preferences_failure_when_fallback_is_invalid(monkeypatch):
+    monkeypatch.setattr(
+        nodes.classification,
+        "get_chat_model",
+        lambda: FailingStructuredLLM("{}"),
+    )
+
+    result = nodes.extract_preferences({"messages": [HumanMessage(content="I like sci-fi")]})
+
+    assert result["extracted_preferences"] == []
+    assert result["error"] == PREFERENCE_EXTRACTION_ERROR
 
 
 def test_save_preferences_success(monkeypatch):

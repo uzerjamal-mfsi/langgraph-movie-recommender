@@ -1,6 +1,6 @@
 # LangGraph Movie & TV Recommender
 
-A conversational movie and TV recommender built with LangGraph, OpenRouter, TMDB, and SQLite. The application is chat-only: you describe what you want to watch, ask about titles, or share your opinions in natural language. There are no commands for managing the library or preferences.
+A conversational movie and TV recommender built with LangGraph, OpenRouter, TMDB, Qdrant, and SQLite. The application is chat-only: you describe what you want to watch, ask about titles, or share your opinions in natural language. There are no commands for managing the library or preferences.
 
 ## Requirements
 
@@ -8,6 +8,7 @@ A conversational movie and TV recommender built with LangGraph, OpenRouter, TMDB
 - [uv](https://docs.astral.sh/uv/)
 - An OpenRouter API key
 - A TMDB API Read Access Token
+- Qdrant for personalized retrieval
 
 ## Setup
 
@@ -61,7 +62,7 @@ docker compose run --rm app
 
 ## Tests
 
-Run the smoke tests without external API calls:
+Run the tests without external API calls:
 
 ```bash
 uv run pytest
@@ -69,17 +70,19 @@ uv run pytest
 
 ## Workflow
 
+Labels in square brackets are `classify_intent` routes; the arrows after a label are graph nodes.
+
 ```
 START
 └── classify_intent
-    ├── recommend → load_taste → retrieve_taste_memories → recommend → END
-    ├── title_question → answer_general → END
-    ├── general → answer_general → END
-    ├── record_feedback → extract_feedback → resolve_title
+    ├── [recommend] load_taste → retrieve_taste_memories → recommend → END
+    ├── [title_question] answer_general → END
+    ├── [general] answer_general → END
+    ├── [record_feedback] extract_feedback → resolve_title
     │   ├── clarify → ask_clarifying_question → resolve_clarification
     │   │   ├── clarify → ask_clarifying_question
     │   │   └── save / error → save_feedback → END
     │   └── save / error → save_feedback → END
-    ├── update_preferences → extract_preferences → save_preferences → END
-    └── error → END
+    ├── [update_preferences] extract_preferences → save_preferences → END
+    └── [error] END
 ```

@@ -15,6 +15,7 @@ from langgraph_movie_recommender.graph.nodes.common import (
 from langgraph_movie_recommender.graph.prompts import (
     CLASSIFIER_PROMPT,
     FEEDBACK_EXTRACTION_PROMPT,
+    GENERAL_ASSISTANT_PROMPT,
     PREFERENCE_EXTRACTION_PROMPT,
 )
 from langgraph_movie_recommender.graph.schemas import (
@@ -22,6 +23,7 @@ from langgraph_movie_recommender.graph.schemas import (
     IntentClassification,
     PreferenceExtraction,
 )
+from langgraph_movie_recommender.graph.structured import invoke_structured
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +32,20 @@ def classify_intent(state, config):
     logger.debug("classify_intent: start, message_count=%d", len(state.get("messages", [])))
 
     try:
-        classifier = get_chat_model().with_structured_output(IntentClassification)
-        result = classifier.invoke(
+        result = invoke_structured(
+            get_chat_model(),
+            IntentClassification,
             [
                 SystemMessage(content=CLASSIFIER_PROMPT),
                 *state["messages"],
-            ]
+            ],
+            operation="classify_intent",
         )
     except Exception:
         logger.exception("classify_intent: failed to classify intent")
+        return error_result(INTENT_ERROR)
+
+    if result is None:
         return error_result(INTENT_ERROR)
 
     filters = result.filters.model_dump(exclude_none=True) if result.filters else None
@@ -55,7 +62,12 @@ def answer_general(state):
     logger.debug("answer_general: start, message_count=%d", len(state.get("messages", [])))
 
     try:
-        response = get_chat_model().invoke(state["messages"])
+        response = get_chat_model().invoke(
+            [
+                SystemMessage(content=GENERAL_ASSISTANT_PROMPT),
+                *state["messages"],
+            ]
+        )
         message = response.content
     except Exception:
         logger.exception("answer_general: failed to generate response")
@@ -72,18 +84,20 @@ def extract_feedback(state):
         return failed("I couldn't find your latest message", feedback=None)
 
     try:
-        result = (
-            get_chat_model()
-            .with_structured_output(FeedbackExtraction)
-            .invoke(
-                [
-                    SystemMessage(content=FEEDBACK_EXTRACTION_PROMPT),
-                    HumanMessage(content=message),
-                ]
-            )
+        result = invoke_structured(
+            get_chat_model(),
+            FeedbackExtraction,
+            [
+                SystemMessage(content=FEEDBACK_EXTRACTION_PROMPT),
+                HumanMessage(content=message),
+            ],
+            operation="extract_feedback",
         )
     except Exception:
         logger.exception("extract_feedback: failed to extract feedback")
+        return failed(FEEDBACK_EXTRACTION_ERROR, feedback=None)
+
+    if result is None:
         return failed(FEEDBACK_EXTRACTION_ERROR, feedback=None)
 
     feedback = result.model_dump()
@@ -104,18 +118,20 @@ def extract_preferences(state):
         )
 
     try:
-        result = (
-            get_chat_model()
-            .with_structured_output(PreferenceExtraction)
-            .invoke(
-                [
-                    SystemMessage(content=PREFERENCE_EXTRACTION_PROMPT),
-                    HumanMessage(content=message),
-                ]
-            )
+        result = invoke_structured(
+            get_chat_model(),
+            PreferenceExtraction,
+            [
+                SystemMessage(content=PREFERENCE_EXTRACTION_PROMPT),
+                HumanMessage(content=message),
+            ],
+            operation="extract_preferences",
         )
     except Exception:
         logger.exception("extract_preferences: failed to extract preferences")
+        return failed(PREFERENCE_EXTRACTION_ERROR, extracted_preferences=[])
+
+    if result is None:
         return failed(PREFERENCE_EXTRACTION_ERROR, extracted_preferences=[])
 
     return {

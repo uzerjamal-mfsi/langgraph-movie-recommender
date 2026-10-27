@@ -32,7 +32,9 @@ APP_MODULES = [
     "langgraph_movie_recommender.graph.recommendations",
     "langgraph_movie_recommender.graph.schemas",
     "langgraph_movie_recommender.graph.state",
+    "langgraph_movie_recommender.graph.structured",
     "langgraph_movie_recommender.graph.workflow",
+    "langgraph_movie_recommender.log_config",
     "langgraph_movie_recommender.memory.vector_store",
 ]
 
@@ -94,3 +96,4 @@ def test_settings_default_data_paths(monkeypatch):
     assert settings.data_dir == Path("data")
     assert settings.library_db_path == Path("data/library.db")
     assert settings.checkpoint_db_path == Path("data/checkpoints.db")
+    assert settings.embedding_dimensions is None
