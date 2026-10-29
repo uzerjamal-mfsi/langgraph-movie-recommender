@@ -97,3 +97,18 @@ def test_settings_default_data_paths(monkeypatch):
     assert settings.library_db_path == Path("data/library.db")
     assert settings.checkpoint_db_path == Path("data/checkpoints.db")
     assert settings.embedding_dimensions is None
+
+
+def test_init_db_runs_alembic_migrations():
+    from sqlalchemy import create_engine, inspect
+
+    from langgraph_movie_recommender.db.session import init_db
+
+    engine = create_engine("sqlite://")
+    init_db(engine)
+
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    assert "library_items" in tables
+    assert "preferences" in tables
+    assert "alembic_version" in tables

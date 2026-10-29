@@ -1,11 +1,12 @@
 from functools import lru_cache
 from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from langgraph_movie_recommender.config import get_settings
-from langgraph_movie_recommender.db.migrations import migrate
 
 SQLITE_TIMEOUT_SECONDS = 30
 
@@ -46,6 +47,11 @@ def get_session():
 
 def init_db(db_engine=None):
     target_engine = db_engine or get_engine()
+    alembic_dir = Path(__file__).parent / "alembic"
+
+    alembic_cfg = Config()
+    alembic_cfg.set_main_option("script_location", str(alembic_dir))
 
     with target_engine.begin() as connection:
-        migrate(connection)
+        alembic_cfg.attributes["connection"] = connection
+        command.upgrade(alembic_cfg, "head")
