@@ -39,7 +39,27 @@ def _upsert_library_item(session, item):
 
 
 def _upsert_preference(session, preference):
-    stmt = sqlite_insert(PreferenceRecord).values(
+    existing = session.scalar(
+        select(PreferenceRecord).where(
+            (PreferenceRecord.id == preference.id)
+            | (
+                (PreferenceRecord.text == preference.text)
+                & (PreferenceRecord.kind == preference.kind)
+            )
+        )
+    )
+    if existing:
+        existing.text = preference.text
+        existing.kind = preference.kind
+        existing.source = preference.source
+        existing.source_title = preference.source_title
+        existing.source_media_type = preference.source_media_type
+        existing.source_tmdb_id = preference.source_tmdb_id
+        existing.updated_at = utc_now()
+        session.flush()
+        return existing
+
+    record = PreferenceRecord(
         id=preference.id,
         text=preference.text,
         kind=preference.kind,
@@ -49,31 +69,9 @@ def _upsert_preference(session, preference):
         source_tmdb_id=preference.source_tmdb_id,
         updated_at=utc_now(),
     )
-    update_values = {
-        "text": stmt.excluded.text,
-        "kind": stmt.excluded.kind,
-        "source": stmt.excluded.source,
-        "source_title": stmt.excluded.source_title,
-        "source_media_type": stmt.excluded.source_media_type,
-        "source_tmdb_id": stmt.excluded.source_tmdb_id,
-        "updated_at": stmt.excluded.updated_at,
-    }
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["id"],
-        set_=update_values,
-    )
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["text", "kind"],
-        set_=update_values,
-    )
-    session.execute(stmt)
-
-    return session.scalar(
-        select(PreferenceRecord).where(
-            PreferenceRecord.text == preference.text,
-            PreferenceRecord.kind == preference.kind,
-        )
-    )
+    session.add(record)
+    session.flush()
+    return record
 
 
 def get_library():

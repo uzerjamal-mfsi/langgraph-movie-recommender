@@ -91,7 +91,7 @@ def ask_clarifying_question(state):
     }
 
 
-def resolve_classification(state):
+def resolve_clarification(state):
     raw_answer = state.get("clarification_answer")
     answer = str(raw_answer).strip() if raw_answer is not None else ""
     candidates = state.get("clarification_candidates") or []
@@ -127,3 +127,6 @@ def resolve_classification(state):
         "needs_clarification": True,
         "error": None,
     }
+
+
+resolve_classification = resolve_clarification

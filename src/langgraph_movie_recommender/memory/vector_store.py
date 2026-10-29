@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 def _probe_embedding_dimensions(embeddings):
     """Return the vector size produced by an embeddings implementation."""
     client = getattr(embeddings, "_client", None)
-    getter = getattr(client, "get_sentence_embedding_dimension", None)
+    getter = getattr(client, "get_embedding_dimension", None) or getattr(
+        client, "get_sentence_embedding_dimension", None
+    )
 
     if callable(getter):
         dimensions = getter()
@@ -104,7 +106,7 @@ def get_vector_store():
     return QdrantVectorStore(
         client=_get_client(),
         collection_name=get_settings().qdrant_collection,
-        embeddings=_get_embeddings(),
+        embedding=_get_embeddings(),
     )
 
 

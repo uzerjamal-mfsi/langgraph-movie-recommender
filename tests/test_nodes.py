@@ -155,13 +155,33 @@ def test_answer_general_failure(monkeypatch):
 
 def test_recommend_success(monkeypatch):
     monkeypatch.setattr(nodes.recommender, "find_candidates", lambda filters: [make_item()])
+    fake_llm = FakeLLM(message=AIMessage(content="Here are personalized recommendations"))
+    monkeypatch.setattr(nodes.recommender, "get_chat_model", lambda: fake_llm)
+
+    result = nodes.recommend(
+        {
+            "filters": {},
+            "messages": [HumanMessage(content="recommend something")],
+            "taste_likes": ["action"],
+        }
+    )
+
+    assert result["messages"][0].content == "Here are personalized recommendations"
+    assert result["error"] is None
+
+
+def test_recommend_falls_back_to_template_on_llm_failure(monkeypatch):
+    monkeypatch.setattr(nodes.recommender, "find_candidates", lambda filters: [make_item()])
     monkeypatch.setattr(
-        nodes.recommender, "format_recommendations", lambda items: "Here are titles"
+        nodes.recommender, "get_chat_model", lambda: FakeLLM(error=RuntimeError("LLM failed"))
+    )
+    monkeypatch.setattr(
+        nodes.recommender, "format_recommendations", lambda items: "Fallback recommendations"
     )
 
     result = nodes.recommend({"filters": {}})
 
-    assert result["messages"][0].content == "Here are titles"
+    assert result["messages"][0].content == "Fallback recommendations"
     assert result["error"] is None
 
 
@@ -287,8 +307,8 @@ def test_ask_clarifying_question_failure(monkeypatch):
         nodes.ask_clarifying_question({"clarification_question": "Which one?"})
 
 
-def test_resolve_classification_success():
-    result = nodes.resolve_classification(
+def test_resolve_clarification_success():
+    result = nodes.resolve_clarification(
         {
             "clarification_answer": "1",
             "clarification_candidates": [make_item().model_dump()],
@@ -299,27 +319,19 @@ def test_resolve_classification_success():
     assert result["needs_clarification"] is False
 
 
-def test_resolve_classification_failure():
-    result = nodes.resolve_classification({"clarification_answer": ""})
+def test_resolve_clarification_failure():
+    result = nodes.resolve_clarification({"clarification_answer": ""})
 
     assert result["error"] == "I didn't receive a title choice. Please try again."
 
 
 def test_load_taste_success(monkeypatch):
-    monkeypatch.setattr(
-        nodes.taste,
-        "get_preferences",
-        lambda: [
-            Preference(id="p1", text="likes sci-fi", kind="like"),
-            Preference(id="p2", text="dislikes horror", kind="dislike"),
-        ],
-    )
     monkeypatch.setattr(nodes.taste, "get_watched_ids", lambda: {("movie", 1)})
 
     result = nodes.load_taste({})
 
-    assert result["taste_likes"] == ["likes sci-fi"]
-    assert result["taste_dislikes"] == ["dislikes horror"]
+    assert result["taste_likes"] == []
+    assert result["taste_dislikes"] == []
     assert result["watched_ids"] == ["movie:1"]
 
 
@@ -327,7 +339,7 @@ def test_load_taste_failure(monkeypatch):
     def raise_error():
         raise RuntimeError("db down")
 
-    monkeypatch.setattr(nodes.taste, "get_preferences", raise_error)
+    monkeypatch.setattr(nodes.taste, "get_watched_ids", raise_error)
 
     result = nodes.load_taste({})
 
@@ -350,12 +362,17 @@ def test_retrieve_taste_memories_success(monkeypatch):
     assert result["taste_likes"] == ["likes sci-fi"]
 
 
-def test_retrieve_taste_memories_failure(monkeypatch):
+def test_retrieve_taste_memories_fallback_on_failure(monkeypatch):
     def raise_error(message, limit):
         raise RuntimeError("qdrant down")
 
     monkeypatch.setattr(nodes.taste, "search_relevant_taste", raise_error)
+    monkeypatch.setattr(
+        nodes.taste,
+        "get_preferences",
+        lambda: [Preference(id="p1", text="likes drama", kind="like")],
+    )
 
     result = nodes.retrieve_taste_memories({"messages": [HumanMessage(content="sci-fi")]})
 
-    assert result == {}
+    assert result["taste_likes"] == ["likes drama"]

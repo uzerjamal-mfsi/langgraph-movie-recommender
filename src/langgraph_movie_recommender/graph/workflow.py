@@ -8,7 +8,7 @@ from langgraph_movie_recommender.graph.nodes import (
     extract_preferences,
     load_taste,
     recommend,
-    resolve_classification,
+    resolve_clarification,
     resolve_title,
     retrieve_taste_memories,
     route_after_resolution,
@@ -30,7 +30,7 @@ def build_workflow(checkpointer=None):
     workflow.add_node("extract_feedback", extract_feedback)
     workflow.add_node("resolve_title", resolve_title)
     workflow.add_node("ask_clarifying_question", ask_clarifying_question)
-    workflow.add_node("resolve_clarification", resolve_classification)
+    workflow.add_node("resolve_clarification", resolve_clarification)
     workflow.add_node("save_feedback", save_feedback)
     workflow.add_node("extract_preferences", extract_preferences)
     workflow.add_node("save_preferences", save_preferences)

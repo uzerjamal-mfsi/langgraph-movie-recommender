@@ -17,7 +17,7 @@ EXIT_MESSAGE = "Exiting.. Goodbye!"
 EXIT_COMMANDS = {"exit", "quit"}
 MAX_MESSAGE_LENGTH = 2000
 PROMPT_LABEL = "You: "
-STREAMING_NODE = "answer_general"
+STREAMING_NODES = {"answer_general", "recommend"}
 STREAM_MODES = ["messages", "values"]
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ def response_text(message):
 
 
 def stream_turn(workflow, payload, config):
-    """Stream answer_general tokens. Returns True when anything was printed."""
+    """Stream answer_general and recommend tokens. Returns True when anything was printed."""
     streamed = False
 
     for mode, chunk in workflow.stream(payload, config=config, stream_mode=STREAM_MODES):
@@ -81,7 +81,7 @@ def stream_turn(workflow, payload, config):
             continue
 
         message, metadata = chunk
-        if (metadata or {}).get("langgraph_node") != STREAMING_NODE:
+        if (metadata or {}).get("langgraph_node") not in STREAMING_NODES:
             continue
 
         text = response_text(message)

@@ -26,6 +26,7 @@ from langgraph_movie_recommender.graph.nodes.taste import (
 )
 from langgraph_movie_recommender.graph.nodes.titles import (
     ask_clarifying_question,
+    resolve_clarification,
     resolve_classification,
     resolve_title,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "preferences",
     "recommend",
     "recommender",
+    "resolve_clarification",
     "resolve_classification",
     "resolve_title",
     "retrieve_taste_memories",
